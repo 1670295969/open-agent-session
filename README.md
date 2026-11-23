@@ -218,6 +218,7 @@ opensession/
 ├── install-mac.sh          macOS 安装（launchd LaunchAgent + .app + .icns）
 ├── install.ps1             Windows 安装（启动文件夹 + .lnk + 隐藏窗口启动器）
 ├── push-to-github.sh       一键推送（自动选 SSH(443)/HTTPS，见文件头注释）
+├── LICENSE                 MIT
 ├── assets/
 │   ├── opensession.ico         Windows 图标（16→256 七种尺寸）
 │   ├── opensession.icns        macOS 图标（icp4…ic10，含 1024）
@@ -526,5 +527,9 @@ macOS 首次上机请重点看：双击桌面 `.app` 能否打开、终端恢复
 - **气泡去掉 `pre-wrap` 后连带影响流式消息**：`embed.js` 的 `appendLiveMsg` 原来靠 `pre-wrap`
   保留换行，现在改 Markdown 后要显式加 `.raw`，并且流式结束后一次性 `mdToHtml()` 转换
   （边打字边解析会闪烁）。
+
+## 许可证
+
+[MIT](LICENSE) © 2026 1670295969
 
 
