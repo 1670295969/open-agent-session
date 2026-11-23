@@ -2,7 +2,7 @@
 
 **Open** + **Session**：把散落各处的 agent 会话**打开**看，再把旧会话**打开**接着聊。
 
-聚合查看 / 恢复 **Codex CLI**、**Claude Code**、**Pi**、**Hermes** 的历史会话。
+聚合查看 / 恢复 **Codex CLI**、**Claude Code**、**Pi**、**DeepSeek Harness（dsh）**、**Hermes** 的历史会话。
 
 **当前形态：纯网页版**（浏览器大窗口，窗口自由缩放）。**Linux / macOS / Windows 三平台支持。**
 
@@ -247,11 +247,13 @@ opensession/
 │   ├── terminal-linux.js       Linux：终端候选 + sandbox DBus 修复 + /proc 探环境
 │   ├── terminal-mac.js         macOS：写 .command + open（跟随默认终端）
 │   ├── terminal-win.js         Windows：start + 临时 .cmd（绕开引号转义）
-│   ├── scanners/                四处会话目录扫描
+│   ├── scanners/                五处会话目录扫描
 │   │   ├── claude.js               ~/.claude/projects/**/*.jsonl
 │   │   ├── codex.js                ~/.codex/sessions/**/*.jsonl
 │   │   ├── pi.js                   ~/.pi/agent/sessions/**/*.jsonl
+│   │   ├── dsh.js                  ~/.dsh/sessions/**/session.v4.jsonl.zstd（多帧 zstd）
 │   │   └── hermes.js               ~/.hermes/webui/sessions + ~/.hermes/sessions
+│   ├── zstd.js                  多帧 zstd 解压（Node 内置只解第一帧，见下文）
 │   ├── parsers/
 │   │   └── index.js                正文解析 → 统一消息结构 {role,time,text,tool}
 │   └── embed/                   页面内会话（恢复 / 新建，SSE 流式）
@@ -259,7 +261,8 @@ opensession/
 │       └── adapters/            各工具的参数拼装与输出解析
 │           ├── claude.js               stream-json 逐行解析 text 块
 │           ├── codex.js                prompt 走 stdin（`-`），stdout 直接转发
-│           └── pi.js                   按行流式（防 UTF-8 截断）
+│           ├── pi.js                   按行流式（防 UTF-8 截断）
+│           └── dsh.js                  NDJSON：session / text / status / final
 └── public/                      前端
     ├── index.html               骨架
     ├── app.css                  样式
@@ -296,8 +299,8 @@ opensession/
 
 | 按钮 | 行为 | 适用 |
 |---|---|---|
-| **⚡ 页面内创建** | 不弹终端，本页里直接跑第一条消息；跑完自动把这个新会话接进列表并打开，可以接着在输入栏里继续聊 | codex / claude / pi |
-| **启动终端** | 打开系统终端跑交互式 CLI，之后的对话在终端里进行 | 四家都行（含 hermes） |
+| **⚡ 页面内创建** | 不弹终端，本页里直接跑第一条消息；跑完自动把这个新会话接进列表并打开，可以接着在输入栏里继续聊 | codex / claude / pi / dsh |
+| **启动终端** | 打开系统终端跑交互式 CLI，之后的对话在终端里进行 | 五家都行（含 hermes） |
 
 页面内创建时「第一条消息」必填——CLI 的 `-p` / `exec` 是一次性调用，没有 prompt 起不来。终端方式会忽略该字段。
 
@@ -350,6 +353,98 @@ hermes 会话是只读存储，没有页面内适配器，选中它时「页面�
 
 比恢复模式粗（恢复模式是纯文本逐字流），但能拿到 id，且边跑边显示。`item.type==="error"` 里有一类是配置告警（`Codex is ignoring ...`，本机 `~/.codex/config.toml` 里 `disable_response_storage` 已废弃就会连报两条），不影响本次回答，会以 `⚠` 抖在正文前面误导人，所以按前缀过滤掉了。
 
+## DeepSeek Harness（dsh）
+
+### 会话存储
+
+```
+~/.dsh/sessions/--<cwd 转义>--/session-<uuid>/session.v4.jsonl.zstd
+                                              session.lock
+```
+
+一个会话是**一个目录**、里面两个文件：`session.v4.jsonl.zstd`（正文）和 `session.lock`。
+目录级回收站就是为它加的（见「删除会话」）。
+
+### 多帧 zstd：Node 内置只解第一帧
+
+这是接 dsh 时最大的坑。dsh 每追加一批事件就往文件尾**压一个新帧**拼上去，所以一个
+143KB 的文件里可能有 6 个独立帧。而 Node 的 `zlib.zstdDecompressSync` **只输出第一帧**：
+
+```js
+zlib.zstdDecompressSync(fs.readFileSync(f))   // 143768 B → 169 B（丢 99.9%）
+zstd -dc f                                     // 143768 B → 718562 B（正确）
+```
+
+`decompressStream` 也一样，只吐第一帧就 end。所以 `lib/zstd.js` 自己按 RFC 8878 解析帧边界，
+逐帧解压再 `Buffer.concat`。
+
+帧头解析要点（按顺序读）：
+
+| 字段 | 长度 | 说明 |
+|---|---|---|
+| Magic | 4 | `28 B5 2F FD`；`50 2A 4D 18`–`5F 2A 4D 18` 是可跳过帧（skippable frame） |
+| Frame_Header_Descriptor | 1 | bit7-6 FCS 长度标志、bit5 singleSegment、bit2 是否带 checksum、bit1-0 字典 ID 长度 |
+| Window_Descriptor | 0/1 | singleSegment=1 时不存在 |
+| Dictionary_ID | 0/1/2/4 | 由 FHD bit1-0 决定，本场景恒为 0 |
+| Frame_Content_Size | 0/1/2/4/8 | 由 FHD bit7-6 与 singleSegment 组合决定 |
+| Block 循环 | — | 每块 3 字节小端头：bit0 last、bit1-2 type、bit3-23 size |
+
+**Block 的 RLE 例外**：`type=1` 时 `Block_Size` 是**解压后**长度，但块内实际只有 **1 字节**数据。
+指针按 `size` 前进会立刻跑到帧外，表现为「第二帧 magic 对不上」。正确前进量是 `type===1 ? 1 : size`。
+这个 bug 一开始让我以为多帧解析失败，实际是 RLE 块算错。
+
+**尾巴容错**：会话是追加写的，末尾常留半个帧。解析失败就停在最后一个成功位置，
+已解出的内容照常返回——不能因为尾巴不完整就让整条会话读不出来。
+
+验证方式：把 `decompressAll` 的结果与 `zstd -dc` 的输出做 `Buffer.equals` 比对，29/29 逐字节一致。
+
+### 正文解析
+
+事件流是 JSONL，只取两类：
+
+| 事件 | 取什么 |
+|---|---|
+| `user/message` | `data.content`，套 `dshStrip()` 去掉注入前缀；纯注入则丢弃 |
+| `assistant/message` | `data.message.content` 里的 text 块与 `tool-call` 块 |
+
+`step/start`、`turn/*`、`system/message`、独立的 `tool/call` 都是控制流或重复信息，跳过。
+
+**注入前缀**（`DSH_INJECT_PATTERNS`，5 条）会被剥掉，否则每条用户消息开头都挂一段
+`[Workspace::v1:…]` / `[OUT-OF-BAND…]`：
+
+```
+[Workspace::v1: /home/you/work]
+[OUT-OF-BAND USER MESSAGE]
+[CONTEXT COMPACTION …]
+[PRIOR CONTEXT …]
+[IMPORTANT: Background process …]
+```
+
+### 恢复与新建
+
+| 场景 | 命令 |
+|---|---|
+| 终端恢复 | `cd <会话 cwd> && dsh --profile headless --session-id <session-uuid>` |
+| 页面内恢复 | 同上，由 `lib/embed/adapters/dsh.js` 拉起，消息走**命令行参数**而不是 stdin |
+| 页面内新建 | `dsh --profile headless --json <message>`，从 `{type:"session",sessionId}` 拿 id |
+
+**`cd` 不能省**：`dsh --session-id` 会校验会话记录的 cwd，不在原目录执行直接报
+`session "…" was recorded in "<x>", not "<y>"`。所以扫描时 cwd 必须从首行 `session` 事件里读**原文**——
+目录名 `--home-you-work--` 是转义过的，反解不回原路径（且 `/` → `-` 不可逆）。
+
+**目录名转义规则**（与 pi 不同，别照抄）：cwd 去掉首尾 `/`，把中间的 `/` 换成 `-`，两头各加 `--`。
+`/home/you/work` → `--home-you-work--`。`.` 原样保留。
+
+新建参数不能和另三家互换：claude 用 `--session-id <uuid>`（服务端造）；codex 必须 `--json` 才有
+`thread.started.thread_id`；pi 用 `--session <自定路径>`；dsh 用 `--session-id <已有 id>`，
+新建时**不传**该参数、靠 `--json` 首行回带。
+
+### 模型下拉为空
+
+`lib/models.js` 里 `EFFORTS.dsh = []`、`modelCatalog.dsh = []`——dsh 的模型清单在
+`~/.dsh/profiles/*.yaml` 里，为了不引 YAML 解析库（本项目零依赖），下拉留空，
+前端遇到空数组自动隐藏。想指定模型直接在输入栏里用 `-m <name>` 或改 profile。
+
 ## 空会话（只有元数据、没有对话）
 
 有些会话点开后一片空白，这不是解析 bug，文件里确实没有对话内容。典型例子：
@@ -382,7 +477,7 @@ codex resume --no-daemon 01a200f5-aaac-7f70-82a1-b25059212597
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/api/sessions?force=1` | 四家会话列表（按 mtime 倒序） |
+| GET | `/api/sessions?force=1` | 五家会话列表（按 mtime 倒序） |
 | GET | `/api/session?file=&tool=` | 单会话消息 |
 | GET | `/api/models` | 模型目录 + 思考强度档位 |
 | GET | `/api/export?file=&tool=&title=&id=&cwd=` | 导出 Markdown |
@@ -414,12 +509,16 @@ codex resume --no-daemon 01a200f5-aaac-7f70-82a1-b25059212597
 
 会话文件全在你的个人目录里，所以删除做了三层收窄，**不要为了省事改成 `fs.unlink`**：
 
-1. **路径白名单**：`realpath` 解析后必须落在四家工具的会话目录内，`~/.claude/projects/../../.ssh/id_rsa`
+1. **路径白名单**：`realpath` 解析后必须落在五家工具的会话目录内，`~/.claude/projects/../../.ssh/id_rsa`
    这类穿越会被拒（403），符号链接逃逸同理。Windows 下比较路径会折叠大小写
    （`C:\Users\Alice` 与 `c:\users\alice` 视为同一目录），否则真实路径会被误判越界。
-2. **文件名白名单**：只允许 `.jsonl`；hermes 只认 `session_*.json`，索引 `_index.json`、
+2. **文件名白名单**：只允许 `.jsonl`（dsh 额外认 `.jsonl.zstd`）；hermes 只认 `session_*.json`，索引 `_index.json`、
    诊断用的 `request_dump_*.json` 一律拒绝。
-3. **回收站而非删除**：
+3. **dsh 按目录删**：dsh 会话是一个目录（正文 + `session.lock`），只搬走 `.zstd` 会留孤儿目录。
+   所以 `resolveDeletable` 会返回 `trashTarget`（指向父目录），三个平台的回收站实现都支持目录。
+   **目录内容必须刚好是 `session.v4.jsonl.zstd` + `session.lock`**，多一个文件就拒删——
+   防止把用户自己塞进会话目录的东西一起搬走。
+4. **回收站而非删除**：
    - Linux 按 freedesktop 规范写 `files/` + `info/*.trashinfo`，重名自动加 `.1`、`.2` 不覆盖。
    - macOS 直接 `rename` 进 `~/.Trash`，重名按系统习惯变成 `name 2.jsonl`（编号在扩展名前）。
      默认不走 Finder（`osascript`）——那需要 Automation 权限，无人值守时会被 TCC 静默拒绝；

@@ -14,6 +14,7 @@
     <h1>📜 OpenSession
       <span class="headbtns">
         <button class="iconbtn" onclick="refreshAll(this)" title="刷新会话列表">↻</button>
+        <button class="iconbtn" id="sidebtn" onclick="toggleSide()" title="隐藏左侧列表（Ctrl+B）">«</button>
         <button onclick="openNew()">＋ 新建会话</button>
       </span>
     </h1>
@@ -25,6 +26,7 @@
     <span class="tchip codex" data-t="codex">Codex</span>
     <span class="tchip claude" data-t="claude">Claude</span>
     <span class="tchip pi" data-t="pi">Pi</span>
+    <span class="tchip dsh" data-t="dsh">DeepSeek</span>
     <span class="tchip hermes" data-t="hermes">Hermes</span>
     <button id="selbtn" onclick="toggleSelectMode()" title="多选后批量删除">☑ 多选</button>
   </div>
@@ -49,6 +51,7 @@
       <option value="codex">Codex CLI　—　codex --no-daemon</option>
       <option value="claude">Claude Code　—　claude</option>
       <option value="pi">Pi　—　pi</option>
+      <option value="dsh">DeepSeek Harness　—　dsh --profile headless</option>
       <option value="hermes">Hermes　—　hermes</option>
     </select>
     <label>工作目录</label>
@@ -68,6 +71,9 @@
 <div id="delmodal" onclick="if(event.target===this)closeDeleteModal()"></div>
 
 <div id="toast"></div>
+
+<!-- 折叠后浮在正文左上角的恢复手柄（#main 的内容会被反复重绘，只能挂在 body 上） -->
+<button id="handle" onclick="toggleSide()" title="显示左侧列表（Ctrl+B）">» 会话列表</button>
 
 <script src="/js/state.js"></script>
 <script src="/js/md.js"></script>

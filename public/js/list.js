@@ -1,7 +1,7 @@
 /* 左侧会话列表：筛选、统一分页、分组渲染 */
 "use strict";
 
-const TOOL_LABELS = { codex: "Codex", claude: "Claude", pi: "Pi", hermes: "Hermes" };
+const TOOL_LABELS = { codex: "Codex", claude: "Claude", pi: "Pi", dsh: "DeepSeek", hermes: "Hermes" };
 
 function filteredSessions() {
   let set = state.sessions;
@@ -81,7 +81,7 @@ function renderList() {
     for (const s of pageItems) list.appendChild(itemEl(s, true));
   } else {
     // 「全部」视图：页内按工具分组，分页统一由底部全类分页器控制
-    for (const tool of ["codex", "claude", "pi", "hermes"]) {
+    for (const tool of ["codex", "claude", "pi", "dsh", "hermes"]) {
       const items = pageItems.filter((s) => s.tool === tool);
       if (!items.length) continue;
       const gh = document.createElement("div");
@@ -162,12 +162,12 @@ async function refreshAll(btn) {
 }
 
 function updateStats() {
-  const c = { codex: 0, claude: 0, pi: 0, hermes: 0 };
+  const c = { codex: 0, claude: 0, pi: 0, dsh: 0, hermes: 0 };
   for (const s of state.sessions) c[s.tool] = (c[s.tool] || 0) + 1;
   const el = $("#stats");
   if (el) {
     el.textContent = "Codex " + c.codex + " · Claude " + c.claude +
-      " · Pi " + c.pi + " · Hermes " + c.hermes;
+      " · Pi " + c.pi + " · DeepSeek " + c.dsh + " · Hermes " + c.hermes;
   }
 }
 

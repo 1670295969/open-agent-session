@@ -8,13 +8,31 @@
 body {
   background: var(--bg); color: var(--txt); font: 16px/1.6 "Segoe UI", system-ui, sans-serif;
   height: 100vh; display: flex;
+  /* 折叠时 #side 用负外边距滑出左侧，必须裁掉，否则会出现横向滚动条 */
+  overflow: hidden;
 }
 
 /* ---------- 左侧列表 ---------- */
 #side {
   width: 400px; min-width: 280px; background: var(--panel);
   border-right: 1px solid var(--border); display: flex; flex-direction: column;
+  /* 折叠动画走负外边距：宽度不变，列表内部的排版完全不参与重排，
+     滑动过程不会出现文字挤压/换行跳动；#main 自动吃满剩余空间 */
+  margin-left: 0; transition: margin-left .18s ease;
 }
+/* 折叠态：整体推出左侧边界（-401px = 400 宽 + 1px 边框） */
+html.side-collapsed #side { margin-left: -401px; }
+/* 折叠手柄：平时藏起来，折叠后浮在正文左上角 */
+#handle {
+  display: none; position: fixed; top: 9px; left: 10px; z-index: 30;
+  padding: 6px 13px; font-size: 13.5px; color: var(--dim);
+  background: var(--panel2); border: 1px solid var(--border); border-radius: 6px;
+  box-shadow: 0 2px 10px rgba(0,0,0,.35);
+}
+#handle:hover { color: var(--accent); }
+html.side-collapsed #handle { display: block; }
+/* 手柄盖在 #bar 左侧，给 cwd / 命令让出一段距离 */
+html.side-collapsed #bar { padding-left: 108px; }
 #head { padding: 14px 16px 9px; }
 #head h1 {
   font-size: 17px; margin-bottom: 11px; color: #fff;
@@ -46,6 +64,7 @@ body {
 .tchip.on.codex { background: #a86b00; }
 .tchip.on.claude { background: #7c4dbd; }
 .tchip.on.pi { background: #2b8a6e; }
+.tchip.on.dsh { background: #4a5bd6; }
 .tchip.on.hermes { background: #b8543f; }
 
 #list { flex: 1; overflow-y: auto; }
@@ -106,6 +125,7 @@ body {
 .b-codex { background: #a86b00; }
 .b-claude { background: #7c4dbd; }
 .b-pi { background: #2b8a6e; }
+.b-dsh { background: #4a5bd6; }
 .b-hermes { background: #b8543f; }
 /* 空会话标记：只有元数据没有正文 */
 .badge.empty { background: transparent; border: 1px dashed #6b6f77; color: var(--dim); font-weight: 500; }

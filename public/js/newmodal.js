@@ -5,11 +5,12 @@ const NEW_SESSION_CMDS = {
   codex: "codex --no-daemon",
   claude: "claude",
   pi: "pi",
+  dsh: "dsh --profile headless",
   hermes: "hermes",
 };
 
 // 页面内创建支持的工具（hermes 只读，只能开终端）
-const INPAGE_TOOLS = ["codex", "claude", "pi"];
+const INPAGE_TOOLS = ["codex", "claude", "pi", "dsh"];
 
 function updateNewCmd() {
   const box = document.getElementById("new-cmd");

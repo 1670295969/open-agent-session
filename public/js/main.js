@@ -1,6 +1,42 @@
 /* 入口：装配各模块并启动 */
 "use strict";
 
+// ---- 左侧列表折叠 ----
+// 折叠状态挂在 <html> 上（不是 body、也不是 #side）：
+// #side 折叠后会被推出视口，但 #main 的内容是反复整体重绘的，
+// 状态类只能放在比它们都高的节点上，重绘才不会把状态冲掉。
+const SIDE_KEY = "opensession.sideCollapsed";
+
+function applySideCollapsed(on, save) {
+  state.sideCollapsed = !!on;
+  document.documentElement.classList.toggle("side-collapsed", !!on);
+  if (save) {
+    try { localStorage.setItem(SIDE_KEY, on ? "1" : "0"); } catch {}
+  }
+}
+
+function toggleSide() {
+  applySideCollapsed(!state.sideCollapsed, true);
+}
+
+function initSide() {
+  let saved = null;
+  try { saved = localStorage.getItem(SIDE_KEY); } catch {}
+  applySideCollapsed(saved === "1", false);
+  // Ctrl+B 切换（与多数编辑器/浏览器的侧栏习惯一致）
+  document.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey &&
+        (e.key === "b" || e.key === "B")) {
+      // 焦点在输入框/文本域里时不劫持，避免影响正常输入
+      const t = e.target;
+      const typing = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
+      if (typing) return;
+      e.preventDefault();
+      toggleSide();
+    }
+  });
+}
+
 // 支持从 URL 预置筛选（opensession-open --tool=xx / --q=xx 时用）
 //   ?tool=claude&q=关键字
 function applyUrlPrefs() {
@@ -8,7 +44,7 @@ function applyUrlPrefs() {
   try { p = new URLSearchParams(location.search); } catch { return; }
   const tool = p.get("tool");
   const q = p.get("q");
-  if (tool && ["codex", "claude", "pi", "hermes"].includes(tool)) {
+  if (tool && ["codex", "claude", "pi", "dsh", "hermes"].includes(tool)) {
     state.typeFilter = tool;
     document.querySelectorAll(".tchip").forEach((x) => x.classList.remove("on"));
     const chip = document.querySelector('.tchip[data-t="' + tool + '"]');
@@ -18,6 +54,8 @@ function applyUrlPrefs() {
     const el = $("#search");
     if (el) el.value = q;
   }
+  // 折叠状态也可由启动参数强制指定：--noside
+  if (p.get("side") === "0") applySideCollapsed(true, true);
 }
 
 // 读运行环境信息（平台名 / 回收站位置）。失败不阻塞主流程——
@@ -39,6 +77,7 @@ function loadEnv() {
 }
 
 function boot() {
+  initSide();
   applyUrlPrefs();
   loadEnv();
   bindSearch();

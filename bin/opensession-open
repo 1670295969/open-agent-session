@@ -6,6 +6,7 @@
 #   opensession-open --tab            退回普通浏览器标签页
 #   opensession-open --tool=claude    只打开 claude 的会话
 #   opensession-open --q=关键词        打开并预先搜索
+#   opensession-open --noside         启动即收起左侧列表（正文占满窗口）
 #   OPENSESSION_WIN_W=1600 OPENSESSION_WIN_H=900 opensession-open
 #
 # 服务侧：不活就拉起来。优先 systemctl --user start（能长期常驻），
@@ -52,6 +53,7 @@ for arg in "$@"; do
   case "$arg" in
     --tool=*) QS="${QS:+$QS&}tool=${arg#*=}" ;;
     --q=*)    QS="${QS:+$QS&}q=${arg#*=}" ;;
+    --noside) QS="${QS:+$QS&}side=0" ;;
     --app)    MODE="app" ;;
     --tab)    MODE="tab" ;;
   esac

@@ -21,20 +21,21 @@
 
 ## 1. 它是什么
 
-一个本地网页应用，把 **Codex CLI**、**Claude Code**、**Pi**、**Hermes** 四个命令行 AI 工具散落在各处的历史会话，聚合成一个可搜索、可阅读、可继续对话的界面。
+一个本地网页应用，把 **Codex CLI**、**Claude Code**、**Pi**、**DeepSeek Harness（dsh）**、**Hermes** 五个命令行 AI 工具散落在各处的历史会话，聚合成一个可搜索、可阅读、可继续对话的界面。
 
-它**不落新数据、不改动已有文件**（除非你主动删除），只读这四家工具自己写的会话文件：
+它**不落新数据、不改动已有文件**（除非你主动删除），只读这五家工具自己写的会话文件：
 
 | 工具 | 会话文件位置 |
 |---|---|
 | Codex CLI | `~/.codex/sessions/**/*.jsonl`（标题另读 `~/.codex/session_index.jsonl`） |
 | Claude Code | `~/.claude/projects/**/*.jsonl` |
 | Pi | `~/.pi/agent/sessions/**/*.jsonl`，或 `$PI_CODING_AGENT_SESSION_DIR` |
+| DeepSeek Harness | `~/.dsh/sessions/**/session.v4.jsonl.zstd`（zstd 压缩的多帧 JSONL） |
 | Hermes | `~/.hermes/webui/sessions/*.json`、`~/.hermes/sessions/session_*.json` |
 
 （Windows 下 `~` 即 `%USERPROFILE%`，路径结构相同。）
 
-所以：**你平时怎么用这四个工具，这里就怎么显示**；反过来，这里的操作也会真实作用到那些会话上——「恢复」是真的续上那次对话，「删除」是真的把文件移进回收站。
+所以：**你平时怎么用这五个工具，这里就怎么显示**；反过来，这里的操作也会真实作用到那些会话上——「恢复」是真的续上那次对话，「删除」是真的把文件移进回收站。
 
 > **关于名字**：**OpenSession** = *open* + *session*。核心动作就两件——把散落各处的会话**打开**（查看、搜索、导出），
 > 以及把旧会话重新**打开**继续聊（页面内恢复 / 终端恢复）。名字取自动作本身，不是"馆"或"仓库"那类收藏式命名。
@@ -143,10 +144,10 @@ OPENSESSION_WIN_W=1600 OPENSESSION_WIN_H=900 opensession-open --app
 
 ```
 ┌───────────────────────────────┬───────────────────────────────────────────────┐
-│ 📜 OpenSession  ↻             │ 📁 工作目录    ● 嵌入会话中                   │
-│ ＋ 新建会话                   │ $ resume 命令         [操作按钮行]            │
-│ 搜索标题 / 项目路径…          │ ───────────────────────────────────────────── │
-│ Codex 50 · Claude 46 · Pi 9   │ 👤 用户   2026-11-23 10:49                    │
+│ 📜 OpenSession  ↻ «  ＋新建   │ 📁 工作目录    ● 嵌入会话中                   │
+│ 搜索标题 / 项目路径…          │ $ resume 命令         [操作按钮行]            │
+│ Codex 50 · Claude 46 · Pi 9   │ ───────────────────────────────────────────── │
+│ DeepSeek 29 · Hermes 23       │ 👤 用户   2026-11-23 10:49                    │
 │ [全部][Codex][…]  ☑ 多选      │    你好，帮我看看这个报错                     │
 │ ──────────                    │ 🤖 助手   2026-11-23 10:49                    │
 │ ▸ Codex   16 个               │    这是 Markdown 渲染后的正文…                │
@@ -159,6 +160,19 @@ OPENSESSION_WIN_W=1600 OPENSESSION_WIN_H=900 opensession-open --app
 ```
 
 左侧是**会话列表**，右侧是**当前会话正文 + 操作栏**，底部输入栏在「页面内恢复」打开时出现。
+
+### 隐藏左侧列表
+
+标题栏的 `«` 按钮可以收起左侧列表，让正文占满整个窗口（读长对话、对照代码时有用）。
+
+| 操作 | 效果 |
+|---|---|
+| 点标题栏 `«` | 收起左侧列表 |
+| 点左上角浮出的 `» 会话列表` | 展开回来 |
+| `Ctrl+B`（macOS 也可 `Cmd+B`） | 来回切换 |
+
+折叠状态会被记住，下次打开还是收起的样子；想恢复默认（展开）就再点一次 `»`。
+在搜索框 / 输入栏里打字时 `Ctrl+B` 不生效，不会影响正常输入。
 
 ---
 
@@ -203,7 +217,7 @@ $ codex resume --no-daemon 01a2...   ← 可以复制到终端跑的命令
 
 **搜索框**同时匹配 **标题** 和 **项目路径**，输入即过滤，不区分大小写。
 
-**类型筛选**是四个 chip：`全部` / `Codex` / `Claude` / `Pi` / `Hermes`。
+**类型筛选**是五个 chip：`全部` / `Codex` / `Claude` / `Pi` / `DeepSeek` / `Hermes`。
 
 - 「全部」视图下，列表内**按工具分组**，每组带数量
 - 切到单一类型或输入了搜索词后，改为**平铺**并给每条加工具徽标
@@ -383,7 +397,8 @@ launchctl bootout gui/$(id -u)/com.opensession.viewer   # macOS
 | 参数 / 变量 | 作用 |
 |---|---|
 | `--app` / `--tab` | 独立窗口 / 普通标签页 |
-| `--tool=codex\|claude\|pi\|hermes` | 预置类型筛选 |
+| `--tool=codex\|claude\|pi\|dsh\|hermes` | 预置类型筛选 |
+| `--noside` | 启动时直接收起左侧列表 |
 | `--q=关键词` | 预置搜索 |
 | `OPENSESSION_WIN_W` / `OPENSESSION_WIN_H` | 独立窗口宽高，默认 1900×1150 |
 | `OPENSESSION_PROFILE` | Chrome 用户数据目录，默认 `~/.cache/opensession-chrome` |
@@ -396,7 +411,8 @@ launchctl bootout gui/$(id -u)/com.opensession.viewer   # macOS
 | 页面内输入栏 | `Enter` | 发送 |
 | 页面内输入栏 | `Shift` + `Enter` | 换行 |
 | 新建弹窗 | `Ctrl` / `⌘` + `Enter` | 页面内创建 |
-| 任意弹窗 | 点遮罩空白处 | 关闭弹窗 |
+| 任意弹窗 | `Esc` / 点遮罩空白处 | 关闭弹窗 |
+| 全局 | `Ctrl` / `⌘` + `B` | 收起 / 展开左侧列表（输入框内不触发） |
 
 > 改过前端代码后，浏览器里要 **Ctrl+Shift+R**（macOS：⌘+Shift+R）强刷一次，否则跑的仍是被缓存的老 JS。
 
@@ -405,7 +421,7 @@ launchctl bootout gui/$(id -u)/com.opensession.viewer   # macOS
 ## 14. 常见问题
 
 **Q：页面打开是空白，左侧一个会话都没有？**
-先看四个工具目录存不存在（`~/.codex/sessions`、`~/.claude/projects`、`~/.pi/agent/sessions`、`~/.hermes`）。
+先看五个工具目录存不存在（`~/.codex/sessions`、`~/.claude/projects`、`~/.pi/agent/sessions`、`~/.dsh/sessions`、`~/.hermes`）。
 一个都没有说明你还没在那台机器上用过这些 CLI，不是程序的问题。有一个但没列出来，看服务日志：
 
 ```bash
@@ -485,4 +501,4 @@ rm -rf ~/.config/agent-sessionary ~/.cache/asry-chrome
 | macOS 日志 | `~/Library/Logs/agenthist/` | `~/Library/Logs/agent-sessionary/` | `~/Library/Logs/opensession/` |
 
 **会话数据不受影响** —— 这个工具从不搬动会话文件，改名只涉及它自己的命令、服务和配置。
-你的 Codex / Claude / Pi / Hermes 会话一条都不会丢。
+你的 Codex / Claude / Pi / DeepSeek Harness / Hermes 会话一条都不会丢。
