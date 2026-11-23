@@ -77,7 +77,7 @@ as_user() {
 # dash-to-dock 的 dock-position 默认为 LEFT）。
 #
 # 坑：sandbox 里直接 gsettings set 会返回 0 但值不变（dconf 写被拦，且 uid=0
-# 写的不是 liu 的库），必须走 as_user + 会话 bus 才真正落盘。
+# 写的不是当前用户的库），必须走 as_user + 会话 bus 才真正落盘。
 DESKTOP_ID="opensession.desktop"
 dock_gsettings() { as_user env DBUS_SESSION_BUS_ADDRESS="$BUS_ADDR" gsettings "$@"; }
 
