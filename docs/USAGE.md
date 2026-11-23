@@ -45,7 +45,17 @@
 
 需要 **Node.js 18+**。零 npm 依赖，不装任何包。
 
-先跑一次纯手动模式确认能用（不需要装任何东西）：
+先拿到代码：
+
+```bash
+git clone https://github.com/1670295969/open-agent-session.git opensession
+cd opensession
+```
+
+（本机 22 端口常被墙，克隆/拉取失败时改用 SSH 443：
+`GIT_SSH_COMMAND="ssh -p 443 -o HostKeyAlias=ssh.github.com" git clone git@ssh.github.com:1670295969/open-agent-session.git`）
+
+再跑一次纯手动模式确认能用（不需要装任何东西）：
 
 ```bash
 node opensession-server.js

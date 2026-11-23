@@ -6,6 +6,8 @@
 
 **当前形态：纯网页版**（浏览器大窗口，窗口自由缩放）。**Linux / macOS / Windows 三平台支持。**
 
+仓库地址：<https://github.com/1670295969/open-agent-session>
+
 > 📖 **只是想用它？读 [使用文档](docs/USAGE.md)** —— 安装、界面、恢复、新建、删除、排错，按操作场景组织。
 > 本 README 记录的是实现细节、跨平台差异和踩坑，面向要改代码的人。
 
@@ -215,7 +217,7 @@ opensession/
 ├── install.sh              Linux 安装（systemd + .desktop + 左侧栏固定）
 ├── install-mac.sh          macOS 安装（launchd LaunchAgent + .app + .icns）
 ├── install.ps1             Windows 安装（启动文件夹 + .lnk + 隐藏窗口启动器）
-├── push-to-github.sh       建好空仓库后一键推送
+├── push-to-github.sh       一键推送（自动选 SSH(443)/HTTPS，见文件头注释）
 ├── assets/
 │   ├── opensession.ico         Windows 图标（16→256 七种尺寸）
 │   ├── opensession.icns        macOS 图标（icp4…ic10，含 1024）
