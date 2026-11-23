@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>会话历史查看器</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+
+<div id="side">
+  <div id="head">
+    <h1>📜 会话历史查看器
+      <span class="headbtns">
+        <button class="iconbtn" onclick="refreshAll(this)" title="刷新会话列表">↻</button>
+        <button onclick="openNew()">＋ 新建会话</button>
+      </span>
+    </h1>
+    <input id="search" placeholder="搜索标题 / 项目路径…">
+  </div>
+  <div id="stats"></div>
+  <div id="typebar">
+    <span class="tchip on all" data-t="all">全部</span>
+    <span class="tchip codex" data-t="codex">Codex</span>
+    <span class="tchip claude" data-t="claude">Claude</span>
+    <span class="tchip pi" data-t="pi">Pi</span>
+    <span class="tchip hermes" data-t="hermes">Hermes</span>
+    <button id="selbtn" onclick="toggleSelectMode()" title="多选后批量删除">☑ 多选</button>
+  </div>
+  <div id="selbar"></div>
+  <div id="list"></div>
+  <div id="listpager"></div>
+</div>
+
+<div id="main">
+  <div id="empty">
+    <div class="empty-emoji">🗂️</div>
+    左侧选择一个会话查看内容
+    <button onclick="openNew()">＋ 新建会话</button>
+  </div>
+</div>
+
+<div id="modal" onclick="if(event.target===this)this.classList.remove('show')">
+  <div class="box">
+    <h3>🆕 新建会话</h3>
+    <label>工具</label>
+    <select id="new-tool">
+      <option value="codex">Codex CLI　—　codex --no-daemon</option>
+      <option value="claude">Claude Code　—　claude</option>
+      <option value="pi">Pi　—　pi</option>
+      <option value="hermes">Hermes　—　hermes</option>
+    </select>
+    <label>工作目录</label>
+    <input id="new-cwd" list="cwds" placeholder="例如 /home/user/work/myproject" spellcheck="false">
+    <datalist id="cwds"></datalist>
+    <label>第一条消息　<span class="opt">（仅页面内创建需要，终端方式忽略）</span></label>
+    <textarea id="new-first" rows="3" placeholder="例如：介绍一下这个项目…　Ctrl+Enter 在本页创建" spellcheck="false"></textarea>
+    <div id="new-cmd"></div>
+    <div class="row">
+      <button onclick="closeNew()">取消</button>
+      <button id="new-inpage" onclick="doNewInPage(this)" title="不打开终端，直接在本页跑第一条消息">⚡ 页面内创建</button>
+      <button class="primary" onclick="doNew(this)">启动终端</button>
+    </div>
+  </div>
+</div>
+
+<div id="delmodal" onclick="if(event.target===this)closeDeleteModal()"></div>
+
+<div id="toast"></div>
+
+<script src="/js/state.js"></script>
+<script src="/js/md.js"></script>
+<script src="/js/list.js"></script>
+<script src="/js/del.js"></script>
+<script src="/js/chat.js"></script>
+<script src="/js/embed.js"></script>
+<script src="/js/newmodal.js"></script>
+<script src="/js/main.js"></script>
+</body>
+</html>

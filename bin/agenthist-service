@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+# agenthist-service —— Session Viewer 服务入口 wrapper（供 systemd 调用）
+#
+# 为什么要 wrapper 而不是在 unit 里直接写 node 全路径：
+#   1. node 路径含版本号（.../versions/22.22.2/bin/node），WorkBuddy 升级后旧路径消失，
+#      unit 会直接 ExecStart 失败且不报易懂错误
+#   2. DISPLAY / XAUTHORITY 在不同登录方式（X11 / Wayland / 换 DM）下不一样，
+#      写死在 unit 里换个环境就拉不起图形终端
+# 本脚本负责：找到可用的 node → 补全图形会话环境变量 → exec 真正的 server
+
+set -uo pipefail
+
+# ---- 定位项目目录 ----
+# install.sh 会把本脚本复制到 ~/.local/bin 并由 install 时写入 appdir 记录，
+# 所以不写死路径：环境变量 → 本脚本上层的项目根 → 安装时记录的路径。
+resolve_app_dir() {
+  if [ -n "${AGENTHIST_HOME:-}" ] && [ -f "$AGENTHIST_HOME/agenthist-server.js" ]; then
+    printf '%s' "$AGENTHIST_HOME"; return 0
+  fi
+  local self cand
+  self="$(readlink -f "$0" 2>/dev/null || printf '%s' "$0")"
+  cand="$(cd "$(dirname "$self")/.." 2>/dev/null && pwd)"
+  if [ -n "$cand" ] && [ -f "$cand/agenthist-server.js" ]; then
+    printf '%s' "$cand"; return 0
+  fi
+  cand="$HOME/.config/agenthist/appdir"
+  if [ -f "$cand" ]; then
+    cand="$(cat "$cand")"
+    if [ -f "$cand/agenthist-server.js" ]; then printf '%s' "$cand"; return 0; fi
+  fi
+  return 1
+}
+
+APP_DIR="$(resolve_app_dir)" || APP_DIR=""
+ENTRY="$APP_DIR/agenthist-server.js"
+
+log() { printf '[agenthist-service] %s\n' "$*" >&2; }
+
+if [ ! -f "$ENTRY" ]; then
+  log "找不到服务入口: $ENTRY"
+  exit 78   # EX_CONFIG
+fi
+
+# ---------- 1) 选 node ----------
+# 顺序：显式指定 → WorkBuddy 自带（最高版本） → PATH 里的 node
+pick_node() {
+  if [ -n "${AGENTHIST_NODE:-}" ] && [ -x "${AGENTHIST_NODE}" ]; then
+    printf '%s' "${AGENTHIST_NODE}"; return 0
+  fi
+  # WorkBuddy 自带的 node（路径含版本号，故按目录探测最高版本）
+  local v
+  v="$(ls -1d "$HOME/.workbuddy/binaries/node/versions"/*/bin/node 2>/dev/null | sort -V | tail -1)"
+  if [ -n "$v" ] && [ -x "$v" ]; then printf '%s' "$v"; return 0; fi
+  command -v node 2>/dev/null && return 0
+  return 1
+}
+
+NODE_BIN="$(pick_node)" || { log "找不到可用的 node 可执行文件"; exit 127; }
+log "node: $NODE_BIN"
+
+# ---------- 2) 运行时目录 ----------
+# 只补 XDG_RUNTIME_DIR / DBUS。刻意不在这里定 DISPLAY / XAUTHORITY：
+# 本服务随开机（Linger）在用户登录前就启动，此刻的值可能是上一次会话残留，
+# 一旦被固化进进程环境，登录后「恢复会话」就会指向已失效的显示号。
+# 这两项交给 lib/terminal.js 在每次点「恢复会话」时按 /proc 现查。
+RUNTIME_DIR="/run/user/$(id -u)"
+
+if [ -z "${XDG_RUNTIME_DIR:-}" ] && [ -d "$RUNTIME_DIR" ]; then
+  export XDG_RUNTIME_DIR="$RUNTIME_DIR"
+fi
+
+if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ] && [ -S "$RUNTIME_DIR/bus" ]; then
+  export DBUS_SESSION_BUS_ADDRESS="unix:path=$RUNTIME_DIR/bus"
+fi
+
+# ---------- 2.5) 补全 PATH ----------
+# systemd 用户服务拿到的 PATH 只有 /usr/bin:/bin 这一档，而 codex / claude / pi
+# 通常装在 ~/.npm-global/bin、~/.local/bin 这类用户目录里。不补的话：
+#   - 「页面内恢复」spawn 不到 CLI，直接报未找到命令
+#   - pi --list-models 读不到，模型下拉框是空的
+# 这里把这些常见用户 bin 追加到 PATH 末尾（不覆盖系统路径的优先级）。
+for d in "$HOME/.local/bin" "$HOME/.npm-global/bin" "$HOME/bin" \
+         "$HOME/.cargo/bin" "/snap/bin"; do
+  case ":$PATH:" in
+    *":$d:"*) ;;                     # 已有，跳过
+    *) [ -d "$d" ] && PATH="$PATH:$d" ;;
+  esac
+done
+export PATH
+
+log "PATH 已补全用户目录"
+
+log "XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-<none>} DBUS=${DBUS_SESSION_BUS_ADDRESS:-<none>}"
+
+# ---------- 3) 起服务 ----------
+export AGENTHIST_NO_BROWSER="${AGENTHIST_NO_BROWSER:-1}"
+export AGENTHIST_PORT="${AGENTHIST_PORT:-8347}"
+
+cd "$APP_DIR" || exit 78
+exec "$NODE_BIN" "$ENTRY"
