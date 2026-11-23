@@ -228,6 +228,16 @@ button.primary { background: #2b5fad; border-color: #2b5fad; }
   margin: 0 0 8px; padding: 2px 0 2px 11px; border-left: 2px solid #414b5a; color: #aab2be;
 }
 
+/* 页面内实时会话的思考块（public/js/embed.js 边收边写）：
+   和历史会话共用 .think 外观，只是多了个进行中标记 + 更矮的高度上限，
+   免得边想边说时把正文顶出视野。 */
+.msg .think.live > summary { color: #9fb4d8; }
+.msg .think.live > summary::after {
+  content: "· 进行中"; font-size: 11px; opacity: .7; animation: pulse 1.6s ease-in-out infinite;
+}
+.msg .think.live[open] .tbody { max-height: 30vh; }
+@keyframes pulse { 0%, 100% { opacity: .35; } 50% { opacity: .8; } }
+
 /* ---------- Markdown 正文 ---------- */
 .bubble.md { white-space: normal; line-height: 1.68; }
 .bubble.md > :first-child { margin-top: 0; }

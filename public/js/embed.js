@@ -143,13 +143,73 @@ function appendLiveMsg(role, text, cls) {
   return bubble;
 }
 
+/* 思考容器，懒建：只有真的收到 think 增量才插进来。
+   这样 pi 这种拿不到思考明文的工具不会多出一个空的折叠框。
+   返回可写入的 .tbody 元素。
+   live 传当前累计正文：正文先到、思考后到的情况下不能清空气泡，
+   否则那一段正文要等下一次 delta 才回来，中间是一片空白。 */
+function ensureThinkBox(bubble, live) {
+  const wrap = bubble && bubble.parentElement;
+  if (!wrap) return null;
+  let box = wrap.querySelector("details.think");
+  if (box) return box.querySelector(".tbody");
+  box = document.createElement("details");
+  box.className = "think live";
+  // 实时对话期间默认展开 —— 这是「正在对话时能看到思考」的核心；
+  // 历史会话里是折叠的，两者行为不同是有意的。
+  box.open = true;
+  box.innerHTML = '<summary>💭 思考过程 <span class="tmeta"></span></summary>' +
+    '<div class="tbody raw"></div>';
+  wrap.insertBefore(box, bubble);
+  // 用户手动点过就尊重他的选择，收尾时不再自动折叠
+  box.addEventListener("click", () => { box.dataset.touched = "1"; }, { once: true });
+  // 「思考中…」占位让位给真正的思考内容，避免两句叠在一起；已有正文就别动。
+  if (!live) bubble.textContent = "";
+  return box.querySelector(".tbody");
+}
+
+// 思考字数：和 chat.js 的 thinkHtml 保持同一套写法
+function thinkSize(n) {
+  return n >= 1000 ? (n / 1000).toFixed(1) + "k 字" : n + " 字";
+}
+
+/* 收尾：撤掉「进行中」的所有痕迹。卡片上的 live 类控制绿色边框，
+   思考块的 live 类控制「· 进行中」标记。两者若不去掉，收尾后界面上
+   还会一直显示「正在跑」，用户以为没结束。 */
+function markSettled(bubble) {
+  const wrap = bubble && bubble.parentElement;
+  if (!wrap) return;
+  wrap.classList.remove("live");
+  const box = wrap.querySelector("details.think");
+  if (box) box.classList.remove("live");
+}
+
+/* 流结束后把思考块定型：转 Markdown（与正文渲染一致），并收起成一行摘要。
+   流式期间是纯文本 + 展开，因为边打字边解析会闪；收尾一次成型最稳。 */
+function settleThink(bubble, think) {
+  const wrap = bubble && bubble.parentElement;
+  const box = wrap && wrap.querySelector("details.think");
+  if (!box) return;
+  box.classList.remove("live");   // 撤掉「进行中」标记与呼吸动画
+  const tb = box.querySelector(".tbody");
+  const meta = box.querySelector(".tmeta");
+  if (tb && think) {
+    if (state.mdOff) { tb.className = "tbody raw"; tb.textContent = think; }
+    else { tb.className = "tbody"; tb.innerHTML = mdToHtml(think); }
+  }
+  if (meta) meta.textContent = think ? thinkSize(think.length) : "";
+  // 用户手动展开/收起过就不动它
+  if (!box.dataset.touched) box.open = false;
+}
+
 /* 跑一条 /api/embed 的 SSE 流，把增量写进 bubble。
-   返回 { live, created, errs }：live 是累计正文，created 是新建会话成功后后端回的
-   { tool, id, file }（恢复模式恒为 null），errs 是后端发过的错误文案（用于收尾叙述）。
+   返回 { live, think, created, errs }：live 是累计正文，think 是累计思考，
+   created 是新建会话成功后后端回的 { tool, id, file }（恢复模式恒为 null），
+   errs 是后端发过的错误文案（用于收尾叙述）。
    抽成函数是因为「页面内恢复」和「页面内新建」走的是同一条流，
    差别只在于消息发送前/后怎么处理，不必复制一遍 reader 循环。 */
 async function runEmbedStream(body, bubble, onCreated) {
-  let live = "", created = null;
+  let live = "", think = "", created = null;
   const errs = [];
   const r = await fetch("/api/embed", {
     method: "POST",
@@ -191,6 +251,19 @@ async function runEmbedStream(body, bubble, onCreated) {
         // 用户可能在流没跑完时切到别的会话，此时 bubble 已不在文档里，
         // 再写只是改一个游离节点；滚动也无意义。
         if (bubble && bubble.isConnected) { bubble.textContent = live; scrollChatBottom(); }
+      } else if (o.t === "think") {
+        think += o.s;
+        if (bubble && bubble.isConnected) {
+          const tb = ensureThinkBox(bubble, live);
+          if (tb) {
+            tb.textContent = think;
+            // 滚思考块内部，而不是把整页滚到思考末尾 —— 否则正文会被顶出视野
+            tb.scrollTop = tb.scrollHeight;
+            const meta = tb.parentElement && tb.parentElement.querySelector(".tmeta");
+            if (meta) meta.textContent = thinkSize(think.length);
+            scrollChatBottom();
+          }
+        }
       } else if (o.t === "err") {
         errs.push(String(o.s));
         // 同理：不能往「当前」#chat 里塞上一个会话的错误，那会张冠李戴
@@ -201,7 +274,8 @@ async function runEmbedStream(body, bubble, onCreated) {
       }
     }
   }
-  return { live, created, errs };
+  settleThink(bubble, think);
+  return { live, think, created, errs };
 }
 
 
@@ -234,7 +308,7 @@ async function sendEmbed() {
   appendLiveMsg("user", text);
   const bubble = appendLiveMsg("assistant", "思考中…", "");
 
-  let live = "";
+  let live = "", think = "";
   try {
     const r = await runEmbedStream({
       tool: owner.tool, id: owner.id, file: owner.file,
@@ -242,13 +316,20 @@ async function sendEmbed() {
       model: state.selModel, effort: state.selEffort,
     }, bubble);
     live = r.live;
+    think = r.think || "";
   } catch (e) {
     if (!bubble || bubble.isConnected) appendLiveMsg("assistant", "⚠ 请求失败: " + e, "errmsg");
   }
 
-  if (!live && bubble) {
-    const wrap = bubble.parentElement;
-    if (wrap) wrap.remove();
+  // 收尾收拾：只有思考、没有正文时（模型想了但没答），把空正文气泡摘掉，
+  // 保留思考块；两者都没有才把整张卡片删掉。
+  if (bubble && bubble.isConnected) {
+    markSettled(bubble);
+    if (think && !live) bubble.remove();
+    else if (!live && !think) {
+      const wrap = bubble.parentElement;
+      if (wrap) wrap.remove();
+    }
   }
   // 流式期间是纯文本（边打字边解析会闪烁），结束后一次性转 Markdown
   if (live && bubble && bubble.isConnected && !state.mdOff) {
@@ -288,7 +369,7 @@ async function createInPage({ tool, cwd, message }) {
   state.creating = true;
   appendNewChat({ tool, cwd, message });
   const bubble = appendLiveMsg("assistant", "思考中…", "");
-  let live = "", created = null, failed = "";
+  let live = "", think = "", created = null, failed = "";
 
   try {
     // 不传 model / effort：弹窗里没有模型选择，带上前一个会话的残留值
@@ -303,6 +384,7 @@ async function createInPage({ tool, cwd, message }) {
         if (badge) badge.textContent = "● 已落盘 " + c.id.slice(-8);
       });
       live = r.live;
+      think = r.think || "";
       created = r.created || created;
       // 后端明确报错（如目录不存在）时，即便 created 有值也以错误叙述为主，
       // 免得界面显示"成功"而用户不知道其实没跑起来。这里只收集不覆盖。
@@ -319,7 +401,10 @@ async function createInPage({ tool, cwd, message }) {
   // 删完 isConnected 就是 false，不能再拿它当「用户切走了」的证据。
   const stillDraft = !state.active && !!document.getElementById("chat");
 
-  if (!live && bubble) {
+  // 只有思考没有正文时也要留着（模型想过但没答），只摘掉空正文气泡
+  if (bubble && bubble.isConnected) markSettled(bubble);
+  if (!live && think && bubble && bubble.isConnected) bubble.remove();
+  else if (!live && !think && bubble) {
     const wrap = bubble.parentElement;
     if (wrap) wrap.remove();
   }

@@ -412,10 +412,10 @@ zstd -dc f                                     // 143768 B → 718562 B（正确
 | 工具 | 位置 | 备注 |
 |---|---|---|
 | claude | `message.content[].type === "thinking"` → `.thinking` | 最完整 |
-| pi | 同上 | 最完整 |
+| pi | 同上 | 历史会话完整；**实时流拿不到**（见下节） |
 | hermes | `message.reasoning_content` | 推理模型才有 |
 | codex | `payload.reasoning.summary[].text` | `content` 是加密的（`encrypted_content`），实测 2160 条 reasoning 里 0 条可读 content；`summary` 只有要点，中位数 35 字 |
-| dsh | 无 | 实测 20 个会话全量事件里没有 reasoning 字段 |
+| dsh | `message.content[].type === "reasoning"` → `.text` | 明文完整。**2026-11-23 更正**：早前记为「dsh 没有」是错的，那次只抽查了没开思考强度的会话 |
 
 三个实现点：
 
@@ -431,6 +431,43 @@ zstd -dc f                                     // 143768 B → 718562 B（正确
 
 ⚠️ 折叠时内容仍在 DOM 里，但浏览器内查找（`window.find`）**搜不到**，
 必须展开后才能命中——注释里别写成「Ctrl+F 能搜到」，这是实测否掉的。
+
+### 页面内实时思考（2026-11-23）
+
+历史会话的思考是折叠的；**页面内实时对话时反过来 —— 思考块边收边写、默认展开，
+流结束后自动收起成一行摘要**。这个差异是有意的：等待期间用户需要看见"它在想什么"。
+
+后端多一条 SSE 通道 `{t:"think", s}`，与正文的 `{t:"delta", s}` 严格分开。
+混在一条通道里，思考内容就会被当成正式回答渲染出来，所以各 adapter 都走
+`ctx.emitThink()`，绝不能用 `ctx.emit()`。
+
+四家实时能给的东西差别很大（2026-11-23 全部实测，`node` 直接跑 adapter 验证）：
+
+| 工具 | 实时思考 | 细节 |
+|---|---|---|
+| claude | ✅ 完整明文 | `assistant.message.content[]` 里 `{type:"thinking",thinking:"…"}`，无需额外参数 |
+| dsh | ✅ 完整明文 | `{"type":"thinking","text":"…"}` 一行一增量 |
+| codex | ⚠️ 只有一句摘要标题 | 必须加 `-c model_reasoning_summary=detailed`；给的是 `{"item":{type:"reasoning","text":"**Checking server…**"}}`，完整思维链留在服务端。**还不是每轮都有**：一句话能答完的简单提问常常一条都不吐 |
+| pi | ❌ 拿不到 | 有 `thinking_start/end` 事件，但 `thinking` 恒为空串，真内容在 `thinkingSignature.encrypted_content` 里（加密）。代码已接住非空值，换 provider 可能就是明文 |
+
+🔴 **codex 恢复模式从纯文本改成了 `--json`**。原先是纯文本直通、正文逐字流式；
+但纯文本模式完全不吐 reasoning，codex 会话就永远没有思考。实测
+`codex exec resume --json <id> -` 回带的 thread_id 与原会话一致，可以安全切换。
+代价是正文按 `item.completed` 整段到达、不再逐字出现 —— 别误判成"流式坏了"。
+
+前端实现（`public/js/embed.js`）：
+
+- `ensureThinkBox()` **懒建**：只有真收到 think 增量才插 `<details>`，
+  所以 pi 这种拿不到明文的工具不会多出一个空框。
+- 收到 think 时**不能清空正文气泡**（`ensureThinkBox(bubble, live)` 传 live 进去）。
+  实测 codex 会先到 `agent_message` 再到 reasoning，无脑清空会让已显示的正文闪没。
+- `settleThink()` 收尾：一次性转 Markdown（流式期间是纯文本，边打字边解析会闪）、
+  写字数、去掉 `live` 类、折叠。用户中途手动点过（`dataset.touched`）就不再自动折叠，
+  尊重他的选择。
+- `markSettled()` 必须同时摘掉**卡片**和**思考块**上的 `live` 类：
+  卡片 `live` 是绿边框，思考块 `live` 是「· 进行中」的呼吸标记。漏摘会一直显示"正在跑"。
+- 只有思考、没有正文时（模型想了但没答）：摘掉空正文气泡、**保留思考块**；
+  两者都没有才删整张卡片。
 
 ### 正文解析
 
@@ -517,7 +554,7 @@ codex resume --no-daemon 01a200f5-aaac-7f70-82a1-b25059212597
 | GET | `/api/export?file=&tool=&title=&id=&cwd=` | 导出 Markdown |
 | POST | `/api/resume` | 在终端恢复会话 |
 | POST | `/api/new` | 在终端新建会话 |
-| POST | `/api/embed` | 页面内会话（SSE 流）。`create:true` 时新建，其余字段为 `tool/cwd/message`；结束后回 `{t:"created",tool,id,file}` |
+| POST | `/api/embed` | 页面内会话（SSE 流）。`create:true` 时新建，其余字段为 `tool/cwd/message`；事件有 `{t:"delta",s}`（正文）、`{t:"think",s}`（思考）、`{t:"err",s}`，结束后回 `{t:"created",tool,id,file}` 与 `{t:"done"}` |
 | POST | `/api/delete` | 删除单个会话（移入回收站） |
 | POST | `/api/delete-batch` | 批量删除，逐条校验，非法项跳过 |
 | GET | `/api/trash` | 回收站位置 + 当前平台（`{dir, platform, isWin, isMac}`，前端据此切换文案） |
