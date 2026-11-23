@@ -21,6 +21,24 @@ async function openSession(s) {
   renderChat();
 }
 
+// 思考过程：默认折叠，点一行摘要展开。
+// 用原生 <details> 而不是自绘 div：键盘 / 读屏天然可用，也不用自己管展开状态。
+// 折叠状态下只有一行摘要（💭 思考过程 + 字数），不会把正文挤走。
+// 注意：折叠时内容虽在 DOM 里，但浏览器内查找（Ctrl+F）搜不到 —— 实测
+// window.find 返回 false，展开后才能命中。想全库搜思考内容需要先点开。
+function thinkHtml(t) {
+  if (!t) return "";
+  const body = state.mdOff
+    ? '<div class="raw">' + esc(t) + "</div>"
+    : mdToHtml(t);
+  const n = t.length;
+  const size = n >= 1000 ? (n / 1000).toFixed(1) + "k 字" : n + " 字";
+  return '<details class="think">' +
+      '<summary>💭 思考过程 <span class="tmeta">' + size + "</span></summary>" +
+      '<div class="tbody">' + body + "</div>" +
+    "</details>";
+}
+
 function msgHtml(m) {
   const toolHtml = m.tool
     ? '<div class="toolchip" title="' + escAttr(m.tool) + '">⚙ ' + esc(m.tool) + '</div>' : "";
@@ -33,6 +51,7 @@ function msgHtml(m) {
     : "";
   return '<div class="msg ' + m.role + sc + '">' +
       '<div class="who">' + who + ' ' + time + (m.sidechain ? " · sidechain" : "") + '</div>' +
+      thinkHtml(m.think) +
       (body ? '<div class="bubble md">' + body + '</div>' : "") + toolHtml +
     '</div>';
 }

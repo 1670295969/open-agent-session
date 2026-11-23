@@ -259,7 +259,7 @@ opensession/
 │   │   └── hermes.js               ~/.hermes/webui/sessions + ~/.hermes/sessions
 │   ├── zstd.js                  多帧 zstd 解压（Node 内置只解第一帧，见下文）
 │   ├── parsers/
-│   │   └── index.js                正文解析 → 统一消息结构 {role,time,text,tool}
+│   │   └── index.js                正文解析 → 统一消息结构 {role,time,text,tool,think}
 │   └── embed/                   页面内会话（恢复 / 新建，SSE 流式）
 │       ├── index.js                SSE 骨架 + 子进程生命周期
 │       └── adapters/            各工具的参数拼装与输出解析
@@ -405,6 +405,33 @@ zstd -dc f                                     // 143768 B → 718562 B（正确
 
 验证方式：把 `decompressAll` 的结果与 `zstd -dc` 的输出做 `Buffer.equals` 比对，29/29 逐字节一致。
 
+### 思考过程（thinking / reasoning）
+
+统一消息结构里的 `think` 字段。各家存法不同，提取位置也不同：
+
+| 工具 | 位置 | 备注 |
+|---|---|---|
+| claude | `message.content[].type === "thinking"` → `.thinking` | 最完整 |
+| pi | 同上 | 最完整 |
+| hermes | `message.reasoning_content` | 推理模型才有 |
+| codex | `payload.reasoning.summary[].text` | `content` 是加密的（`encrypted_content`），实测 2160 条 reasoning 里 0 条可读 content；`summary` 只有要点，中位数 35 字 |
+| dsh | 无 | 实测 20 个会话全量事件里没有 reasoning 字段 |
+
+三个实现点：
+
+1. **纯思考消息要合并**。claude / pi 常把「只想不答」的 assistant 写成独立一行
+   （实测 claude 1436 条含 thinking 的消息里有 871 条没有 text 也没有 tool）。
+   直接铺开就是一堆空壳卡片，所以 `mergeThink()` 把它们攒起来并到**后面第一条**
+   有正文或工具的 assistant 上（时序上思考在前、回答在后）。后面紧跟用户提问因而
+   并不过去的，才留作独立的折叠卡片，内容不丢。
+2. **前端用原生 `<details>`**，默认没有 `open` 属性 = 默认折叠。不用自绘，
+   键盘和读屏天然可用，展开状态也不用自己维护。
+3. **思考单独限长**（`MAX_THINK_CHARS = 20000`，与正文同档）。实测单块最长
+   56290 字符、单会话累计 774KB；不做上限会让 `/api/session` 响应过大。
+
+⚠️ 折叠时内容仍在 DOM 里，但浏览器内查找（`window.find`）**搜不到**，
+必须展开后才能命中——注释里别写成「Ctrl+F 能搜到」，这是实测否掉的。
+
 ### 正文解析
 
 事件流是 JSONL，只取两类：
@@ -485,7 +512,7 @@ codex resume --no-daemon 01a200f5-aaac-7f70-82a1-b25059212597
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | `/api/sessions?force=1` | 五家会话列表（按 mtime 倒序） |
-| GET | `/api/session?file=&tool=` | 单会话消息 |
+| GET | `/api/session?file=&tool=` | 单会话消息数组，每项 `{role,time,text,tool,think}`（`think` 为思考过程，可能为空串/缺失） |
 | GET | `/api/models` | 模型目录 + 思考强度档位 |
 | GET | `/api/export?file=&tool=&title=&id=&cwd=` | 导出 Markdown |
 | POST | `/api/resume` | 在终端恢复会话 |
