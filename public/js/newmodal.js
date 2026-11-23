@@ -175,11 +175,17 @@ function bindNewModal() {
   document.addEventListener("input", (e) => {
     if (e.target.id === "new-cwd") updateNewCmd();
   });
-  // Ctrl+Enter 直接页面内创建
+  // Ctrl+Enter 直接页面内创建；Escape 关闭弹窗（创建中不响应，避免误关掉进度）
   document.addEventListener("keydown", (e) => {
-    if (e.key !== "Enter" || !(e.ctrlKey || e.metaKey)) return;
     const modal = document.getElementById("modal");
     if (!modal || !modal.classList.contains("show")) return;
+    if (e.key === "Escape") {
+      if (state.creating) return;
+      e.preventDefault();
+      closeNew();
+      return;
+    }
+    if (e.key !== "Enter" || !(e.ctrlKey || e.metaKey)) return;
     e.preventDefault();
     doNewInPage(document.getElementById("new-inpage"));
   });

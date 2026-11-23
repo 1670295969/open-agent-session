@@ -41,7 +41,7 @@ UNIT_DIR="$HOME/.config/systemd/user"
 UNIT="$UNIT_DIR/asry.service"
 ICON_DIR="$HOME/.local/share/icons/hicolor/scalable/apps"
 ICON="$ICON_DIR/agent-sessionary.svg"
-DESKTOP_APPS="$HOME/.local/share/applications/asry.desktop"
+DESKTOP_APPS="$HOME/.local/share/applications/agent-sessionary.desktop"
 
 MODE="install"
 case "${1:-}" in
@@ -78,7 +78,7 @@ as_user() {
 #
 # 坑：sandbox 里直接 gsettings set 会返回 0 但值不变（dconf 写被拦，且 uid=0
 # 写的不是 liu 的库），必须走 as_user + 会话 bus 才真正落盘。
-DESKTOP_ID="asry.desktop"
+DESKTOP_ID="agent-sessionary.desktop"
 dock_gsettings() { as_user env DBUS_SESSION_BUS_ADDRESS="$BUS_ADDR" gsettings "$@"; }
 
 dock_pinned() {
@@ -158,7 +158,7 @@ do_status() {
     echo "  8347: 无响应"
   fi
   echo "== 桌面入口 =="
-  for f in "$OPEN_BIN" "$SVC_BIN" "$UNIT" "$ICON" "$DESKTOP_APPS" "$HOME/桌面/asry.desktop"; do
+  for f in "$OPEN_BIN" "$SVC_BIN" "$UNIT" "$ICON" "$DESKTOP_APPS" "$HOME/桌面/agent-sessionary.desktop"; do
     if [ -e "$f" ]; then echo "  ✓ $f"; else echo "  ✗ 缺失 $f"; fi
   done
   echo "== 左侧导航栏 =="
@@ -234,16 +234,16 @@ StartupNotify=true
 StartupWMClass=AgentSessionary
 DESKTOP
   chmod 664 "$DESKTOP_APPS"
-  cp "$DESKTOP_APPS" "$HOME/桌面/asry.desktop"
-  chmod 775 "$HOME/桌面/asry.desktop"
+  cp "$DESKTOP_APPS" "$HOME/桌面/agent-sessionary.desktop"
+  chmod 775 "$HOME/桌面/agent-sessionary.desktop"
 
   # 信任标记：GNOME 下没有它双击会弹「不受信任的应用程序启动器」。
   # gio 的 metadata 存在 dconf 里，必须带着会话 bus 才写得进去（只 unshare 不够）。
   local trusted=""
   if as_user env DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \
-       gio set "$HOME/桌面/asry.desktop" metadata::trusted true >/dev/null 2>&1; then
+       gio set "$HOME/桌面/agent-sessionary.desktop" metadata::trusted true >/dev/null 2>&1; then
     trusted="$(as_user env DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \
-      gio info -a metadata::trusted "$HOME/桌面/asry.desktop" 2>/dev/null | grep -o 'true' | head -1)"
+      gio info -a metadata::trusted "$HOME/桌面/agent-sessionary.desktop" 2>/dev/null | grep -o 'true' | head -1)"
   fi
   if [ "$trusted" = "true" ]; then
     echo "✓ 桌面图标已信任"
@@ -252,7 +252,7 @@ DESKTOP
   fi
   update-desktop-database "$HOME/.local/share/applications" >/dev/null 2>&1 || true
   gtk-update-icon-cache -f -t "$HOME/.local/share/icons/hicolor" >/dev/null 2>&1 || true
-  echo "✓ 桌面快捷方式 $HOME/桌面/asry.desktop"
+  echo "✓ 桌面快捷方式 $HOME/桌面/agent-sessionary.desktop"
 
   # --- 2.5) 固定到左侧导航栏（Ubuntu dock）---
   do_pin_dock
@@ -329,7 +329,7 @@ do_uninstall() {
   do_unpin_dock
   sd_call StopUnit ss asry.service replace >/dev/null
   rm -f "$UNIT_DIR/default.target.wants/asry.service"
-  rm -f "$UNIT" "$DESKTOP_APPS" "$HOME/桌面/asry.desktop" "$ICON"
+  rm -f "$UNIT" "$DESKTOP_APPS" "$HOME/桌面/agent-sessionary.desktop" "$ICON"
   sd_call Reload >/dev/null
   echo "已撤销服务与桌面图标（$SVC_BIN / $OPEN_BIN 保留，可手动删）"
 }
