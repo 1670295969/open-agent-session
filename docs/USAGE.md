@@ -45,8 +45,8 @@
 先跑一次纯手动模式确认能用（不需要装任何东西）：
 
 ```bash
-node agenthist-server.js
-# Session Viewer: http://localhost:8347
+node agent-sessionary-server.js
+# Agent Sessionary: http://localhost:8347
 ```
 
 确认页面能打开、会话列得出来，再按平台一键安装（服务常驻 + 开机自启 + 桌面图标）：
@@ -75,8 +75,8 @@ node agenthist-server.js
 ./install-mac.sh --uninstall
 ```
 
-产物落在 `~/Library/LaunchAgents/com.agenthist.viewer.plist`、桌面与 `~/Applications` 的
-`会话历史查看器.app`、日志 `~/Library/Logs/agenthist/`。不写系统目录，不需要签名或公证。
+产物落在 `~/Library/LaunchAgents/com.agentsessionary.viewer.plist`、桌面与 `~/Applications` 的
+`会话馆.app`、日志 `~/Library/Logs/agent-sessionary/`。不写系统目录，不需要签名或公证。
 
 ### Windows
 
@@ -91,7 +91,7 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1   # 桌面快捷 + 开机
 ```
 
 不注册系统服务、不改 HKLM。常驻靠当前用户的启动文件夹，卸载就是删两个 `.lnk` 和一个
-`%USERPROFILE%\.agenthist` 目录，也可以在「任务管理器 → 启动」里自己关掉。
+`%USERPROFILE%\.agent-sessionary` 目录，也可以在「任务管理器 → 启动」里自己关掉。
 
 > **重装提示**：升级 Node / 换机器后如果服务起不来，直接重跑一遍安装脚本即可——它是幂等的，
 > 会重新探测 Node 路径并修好服务配置。
@@ -102,25 +102,25 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1   # 桌面快捷 + 开机
 
 | 方式 | 入口 | 说明 |
 |---|---|---|
-| **桌面图标** | 双击「会话历史查看器」 | 最快 |
+| **桌面图标** | 双击「会话馆」 | 最快 |
 | **左侧导航栏 / Dock** | 点已固定的图标（仅 Linux） | 与桌面图标同一入口 |
-| 应用菜单 / 聚焦搜索 | 搜 "Session Viewer" 或 "会话历史查看器" | |
-| 命令行（独立窗口） | `agenthist-open --app` | 1900×1150 无地址栏窗口，像个原生应用 |
-| 命令行（普通标签页） | `agenthist-open --tab` | 在你现有浏览器里开一页 |
-| 带筛选启动 | `agenthist-open --app --tool=claude` | 只显示 claude 会话 |
-| 带搜索启动 | `agenthist-open --app --q=关键词` | 预填搜索框 |
+| 应用菜单 / 聚焦搜索 | 搜 "Agent Sessionary" 或 "会话馆" | |
+| 命令行（独立窗口） | `asry-open --app` | 1900×1150 无地址栏窗口，像个原生应用 |
+| 命令行（普通标签页） | `asry-open --tab` | 在你现有浏览器里开一页 |
+| 带筛选启动 | `asry-open --app --tool=claude` | 只显示 claude 会话 |
+| 带搜索启动 | `asry-open --app --q=关键词` | 预填搜索框 |
 | 直接开浏览器 | 手动访问 `http://localhost:8347` | 服务得先起着 |
 
-`agenthist-open` 会先探活，服务没起就自己拉起来，不用手动起服务。
+`asry-open` 会先探活，服务没起就自己拉起来，不用手动起服务。
 
 **改窗口尺寸：**
 
 ```bash
-AGENTHIST_WIN_W=1600 AGENTHIST_WIN_H=900 agenthist-open --app
+ASRY_WIN_W=1600 ASRY_WIN_H=900 asry-open --app
 ```
 
 **为什么不建议从脚本 / CI 里拉起窗口**：那样启动的 GUI 进程往往没有真实的桌面会话
-（缺 `DISPLAY` / DBus），窗口不会出现。日常请点图标或 `agenthist-open`。
+（缺 `DISPLAY` / DBus），窗口不会出现。日常请点图标或 `asry-open`。
 
 ---
 
@@ -130,7 +130,7 @@ AGENTHIST_WIN_W=1600 AGENTHIST_WIN_H=900 agenthist-open --app
 
 ```
 ┌─────────────────────┬────────────────────────────────────────────┐
-│ 📜 会话历史查看器  ↻ │ 📁 工作目录      ● 嵌入会话中              │
+│ 📜 会话馆  ↻ │ 📁 工作目录      ● 嵌入会话中              │
 │ ＋ 新建会话          │ $ resume 命令                    [操作按钮行]│
 │ 搜索标题 / 项目路径… │ ───────────────────────────────────────────│
 │ Codex 50 · Claude 46 │ 👤 用户  2026-11-23 10:49                  │
@@ -326,7 +326,7 @@ $ codex resume --no-daemon 01a2...   ← 可以复制到终端跑的命令
 ```bash
 # Linux
 ./install.sh --uninstall          # 停服务 + 撤自启 + 去图标（脚本与数据都留着）
-systemctl --user disable --now agenthist   # 只关自启，不动图标
+systemctl --user disable --now asry   # 只关自启，不动图标
 
 # macOS
 ./install-mac.sh --uninstall
@@ -338,39 +338,39 @@ systemctl --user disable --now agenthist   # 只关自启，不动图标
 临时停一下（不撤销安装）：
 
 ```bash
-systemctl --user stop agenthist      # Linux
-launchctl bootout gui/$(id -u)/com.agenthist.viewer   # macOS
-%USERPROFILE%\.agenthist\stop.vbs    # Windows，双击即可
+systemctl --user stop asry      # Linux
+launchctl bootout gui/$(id -u)/com.agentsessionary.viewer   # macOS
+%USERPROFILE%\.agent-sessionary\stop.vbs    # Windows，双击即可
 ```
 
 ---
 
 ## 13. 参数与环境变量速查
 
-### 服务端（`node agenthist-server.js`）
+### 服务端（`node agent-sessionary-server.js`）
 
 | 变量 | 默认 | 作用 |
 |---|---|---|
-| `AGENTHIST_PORT` | `8347` | 监听端口（只绑 `127.0.0.1`，不对外） |
-| `AGENTHIST_NO_BROWSER` | — | 设为 `1` 时不自动开浏览器。被开机自启拉起时应当设 |
-| `AGENTHIST_HOME` | 安装时记录 | 项目目录。移动过项目目录、或想用多份副本时设它 |
-| `AGENTHIST_NODE` | 自动探测 | 指定 node 可执行文件 |
-| `AGENTHIST_MAC_TRASH` | — | macOS 设 `finder` 可改用 Finder 删除（换取「放回原处」，需要 Automation 权限） |
+| `ASRY_PORT` | `8347` | 监听端口（只绑 `127.0.0.1`，不对外） |
+| `ASRY_NO_BROWSER` | — | 设为 `1` 时不自动开浏览器。被开机自启拉起时应当设 |
+| `ASRY_HOME` | 安装时记录 | 项目目录。移动过项目目录、或想用多份副本时设它 |
+| `ASRY_NODE` | 自动探测 | 指定 node 可执行文件 |
+| `ASRY_MAC_TRASH` | — | macOS 设 `finder` 可改用 Finder 删除（换取「放回原处」，需要 Automation 权限） |
 
-> **移动了项目目录怎么办**：`~/.local/bin` 下的 `agenthist-open` / `agenthist-service` 靠
-> `~/.config/agenthist/appdir` 里记录的项目路径回找。换了位置就在新目录里重跑一次
-> `./install.sh`，它会更新这条记录；或者临时用 `AGENTHIST_HOME=/新路径 agenthist-open`。
+> **移动了项目目录怎么办**：`~/.local/bin` 下的 `asry-open` / `asry-service` 靠
+> `~/.config/agent-sessionary/appdir` 里记录的项目路径回找。换了位置就在新目录里重跑一次
+> `./install.sh`，它会更新这条记录；或者临时用 `ASRY_HOME=/新路径 asry-open`。
 
-### 启动器（`agenthist-open`）
+### 启动器（`asry-open`）
 
 | 参数 / 变量 | 作用 |
 |---|---|
 | `--app` / `--tab` | 独立窗口 / 普通标签页 |
 | `--tool=codex\|claude\|pi\|hermes` | 预置类型筛选 |
 | `--q=关键词` | 预置搜索 |
-| `AGENTHIST_WIN_W` / `AGENTHIST_WIN_H` | 独立窗口宽高，默认 1900×1150 |
-| `AGENTHIST_PROFILE` | Chrome 用户数据目录，默认 `~/.cache/agenthist-chrome` |
-| `AGENTHIST_BROWSER` | 指定浏览器可执行文件路径 |
+| `ASRY_WIN_W` / `ASRY_WIN_H` | 独立窗口宽高，默认 1900×1150 |
+| `ASRY_PROFILE` | Chrome 用户数据目录，默认 `~/.cache/asry-chrome` |
+| `ASRY_BROWSER` | 指定浏览器可执行文件路径 |
 
 ### 快捷键
 
@@ -392,9 +392,9 @@ launchctl bootout gui/$(id -u)/com.agenthist.viewer   # macOS
 一个都没有说明你还没在那台机器上用过这些 CLI，不是程序的问题。有一个但没列出来，看服务日志：
 
 ```bash
-journalctl --user -u agenthist -f                    # Linux
-tail -f ~/Library/Logs/agenthist/agenthist.err.log   # macOS
-# Windows：直接看 `%USERPROFILE%\.agenthist\` 下的日志，或前台手跑 node 看输出
+journalctl --user -u asry -f                    # Linux
+tail -f ~/Library/Logs/agent-sessionary/agent-sessionary.err.log   # macOS
+# Windows：直接看 `%USERPROFILE%\.agent-sessionary\` 下的日志，或前台手跑 node 看输出
 ```
 
 **Q：点「页面内恢复」报「未找到命令」？**
@@ -424,3 +424,32 @@ tail -f ~/Library/Logs/agenthist/agenthist.err.log   # macOS
 **Q：会往我的会话文件里写东西吗？**
 只有一种情况会：你在「页面内恢复」或「页面内创建」里发了消息。其余所有操作（浏览、搜索、导出、
 复制命令）都是只读。删除是把文件移进回收站，不改文件内容。
+
+---
+
+## 附录：名称与命令对照
+
+这个工具以前叫 `agenthist`，2026-11-23 改名为 **Agent Sessionary**（中文界面名「会话馆」）。
+如果你从旧版本升级过来，对应关系如下：
+
+| 旧 | 新 |
+|---|---|
+| 命令 `agenthist-open` | `asry-open` |
+| 命令 `agenthist-service` | `asry-service` |
+| 服务 `agenthist.service` | `asry.service` |
+| 环境变量 `AGENTHIST_PORT` 等 | `ASRY_PORT` 等（全部 `AGENTHIST_` 前缀换成 `ASRY_`） |
+| 项目记录 `~/.config/agenthist/appdir` | `~/.config/agent-sessionary/appdir` |
+| Chrome 配置 `~/.cache/agenthist-chrome` | `~/.cache/asry-chrome` |
+| Windows 数据目录 `%USERPROFILE%\.agenthist` | `%USERPROFILE%\.agent-sessionary` |
+| macOS 日志 `~/Library/Logs/agenthist/` | `~/Library/Logs/agent-sessionary/` |
+
+旧版本留下的命令和 `~/.config/agenthist/` 不会自动删除。升级步骤：
+
+```bash
+./install.sh --uninstall          # 先撤掉旧服务（如果旧目录还在）
+./install.sh                      # 在新目录装一遍
+# 旧命令可手动清理：rm ~/.local/bin/agenthist ~/.local/bin/agenthist-open \
+#                    ~/.local/bin/agenthist-service ~/.local/bin/agenthist-web
+```
+
+**会话数据不受影响** —— 这个工具从不搬动会话文件，改名只涉及它自己的命令、服务和配置。

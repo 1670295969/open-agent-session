@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install.sh —— 一键安装 / 修复 Session Viewer 的开机服务与桌面快捷方式
+# install.sh —— 一键安装 / 修复 Agent Sessionary 的开机服务与桌面快捷方式
 #
 # 用法：
 #   ./install.sh            安装或修复（幂等，可重复跑）
@@ -7,8 +7,8 @@
 #   ./install.sh --uninstall 撤销（停服务、删桌面图标，保留数据）
 #
 # 会做的事：
-#   1. 生成 ~/.local/bin/agenthist-service（服务 wrapper，自动找 node）
-#   2. 写入 ~/.config/systemd/user/agenthist.service 并 enable（开机自启）
+#   1. 生成 ~/.local/bin/asry-service（服务 wrapper，自动找 node）
+#   2. 写入 ~/.config/systemd/user/asry.service 并 enable（开机自启）
 #   3. 打开 linger，让服务在登录前也能起来
 #   4. 安装图标 + 桌面快捷方式，并标记「可信」（GNOME 双击必需）
 #
@@ -32,16 +32,16 @@ esac
 
 SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
 APP_DIR="$SELF_DIR"
-SERVER_JS="$APP_DIR/agenthist-server.js"
+SERVER_JS="$APP_DIR/agent-sessionary-server.js"
 
 BIN_DIR="$HOME/.local/bin"
-OPEN_BIN="$BIN_DIR/agenthist-open"
-SVC_BIN="$BIN_DIR/agenthist-service"
+OPEN_BIN="$BIN_DIR/asry-open"
+SVC_BIN="$BIN_DIR/asry-service"
 UNIT_DIR="$HOME/.config/systemd/user"
-UNIT="$UNIT_DIR/agenthist.service"
+UNIT="$UNIT_DIR/asry.service"
 ICON_DIR="$HOME/.local/share/icons/hicolor/scalable/apps"
-ICON="$ICON_DIR/agenthist.svg"
-DESKTOP_APPS="$HOME/.local/share/applications/agenthist.desktop"
+ICON="$ICON_DIR/agent-sessionary.svg"
+DESKTOP_APPS="$HOME/.local/share/applications/asry.desktop"
 
 MODE="install"
 case "${1:-}" in
@@ -58,7 +58,7 @@ esac
 # 坑：busctl 对 `--address="$VAR"` 会报 "Failed to create bus message: Invalid argument"，
 # 必须把地址字面量直接拼在 --address= 后面（下面用 eval 里的单引号固定住）。
 BUS_ADDR='unix:path=/run/user/1000/bus'
-UNIT_OBJ="/org/freedesktop/systemd1/unit/agenthist_2eservice"
+UNIT_OBJ="/org/freedesktop/systemd1/unit/asry_2eservice"
 
 # 在正确 uid 下执行（sandbox 里 uid 0 的 DBus EXTERNAL 凭据会被 bus 拒绝）
 as_user() {
@@ -78,7 +78,7 @@ as_user() {
 #
 # 坑：sandbox 里直接 gsettings set 会返回 0 但值不变（dconf 写被拦，且 uid=0
 # 写的不是 liu 的库），必须走 as_user + 会话 bus 才真正落盘。
-DESKTOP_ID="agenthist.desktop"
+DESKTOP_ID="asry.desktop"
 dock_gsettings() { as_user env DBUS_SESSION_BUS_ADDRESS="$BUS_ADDR" gsettings "$@"; }
 
 dock_pinned() {
@@ -139,7 +139,7 @@ sd_unit_state() {  # ActiveState（空表示查询失败）
 }
 
 sd_enabled() {  # enabled / disabled / static ...
-  sd_call GetUnitFileState s agenthist.service 2>/dev/null \
+  sd_call GetUnitFileState s asry.service 2>/dev/null \
     | awk '{gsub(/"/,"",$2); print $2}'
 }
 
@@ -158,7 +158,7 @@ do_status() {
     echo "  8347: 无响应"
   fi
   echo "== 桌面入口 =="
-  for f in "$OPEN_BIN" "$SVC_BIN" "$UNIT" "$ICON" "$DESKTOP_APPS" "$HOME/桌面/agenthist.desktop"; do
+  for f in "$OPEN_BIN" "$SVC_BIN" "$UNIT" "$ICON" "$DESKTOP_APPS" "$HOME/桌面/asry.desktop"; do
     if [ -e "$f" ]; then echo "  ✓ $f"; else echo "  ✗ 缺失 $f"; fi
   done
   echo "== 左侧导航栏 =="
@@ -176,13 +176,13 @@ do_install() {
 
   # --- 0) 启动脚本（项目里的 bin/ 为准，复制到 ~/.local/bin 便于全局调用）---
   # 复制出去后脚本与本项目的相对位置就断了，所以把项目路径记到
-  # ~/.config/agenthist/appdir，脚本按它回找（也支持 AGENTHIST_HOME 覆盖）。
-  mkdir -p "$HOME/.config/agenthist"
-  printf '%s\n' "$APP_DIR" > "$HOME/.config/agenthist/appdir"
-  echo "✓ 项目位置记录 $HOME/.config/agenthist/appdir"
+  # ~/.config/agent-sessionary/appdir，脚本按它回找（也支持 ASRY_HOME 覆盖）。
+  mkdir -p "$HOME/.config/agent-sessionary"
+  printf '%s\n' "$APP_DIR" > "$HOME/.config/agent-sessionary/appdir"
+  echo "✓ 项目位置记录 $HOME/.config/agent-sessionary/appdir"
 
   local pair
-  for pair in "agenthist-open:$OPEN_BIN" "agenthist-service:$SVC_BIN"; do
+  for pair in "asry-open:$OPEN_BIN" "asry-service:$SVC_BIN"; do
     local src="$APP_DIR/bin/${pair%%:*}" dst="${pair##*:}"
     if [ -f "$src" ]; then
       cp "$src" "$dst" && chmod 775 "$dst" && echo "✓ $dst"
@@ -217,8 +217,8 @@ SVG
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=Session Viewer
-Name[zh_CN]=会话历史查看器
+Name=Agent Sessionary
+Name[zh_CN]=会话馆
 GenericName=Agent Session Browser
 GenericName[zh_CN]=会话历史浏览器
 Comment=聚合查看 Codex CLI / Claude Code / Pi / Hermes 的历史会话
@@ -226,24 +226,24 @@ Comment[zh_CN]=聚合查看 Codex CLI / Claude Code / Pi / Hermes 的历史会�
 Exec=$OPEN_BIN --app
 TryExec=$OPEN_BIN
 Path=$APP_DIR
-Icon=agenthist
+Icon=agent-sessionary
 Terminal=false
 Categories=Development;
 Keywords=session;history;conversation;codex;claude;pi;hermes;会话;
 StartupNotify=true
-StartupWMClass=SessionViewer
+StartupWMClass=AgentSessionary
 DESKTOP
   chmod 664 "$DESKTOP_APPS"
-  cp "$DESKTOP_APPS" "$HOME/桌面/agenthist.desktop"
-  chmod 775 "$HOME/桌面/agenthist.desktop"
+  cp "$DESKTOP_APPS" "$HOME/桌面/asry.desktop"
+  chmod 775 "$HOME/桌面/asry.desktop"
 
   # 信任标记：GNOME 下没有它双击会弹「不受信任的应用程序启动器」。
   # gio 的 metadata 存在 dconf 里，必须带着会话 bus 才写得进去（只 unshare 不够）。
   local trusted=""
   if as_user env DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \
-       gio set "$HOME/桌面/agenthist.desktop" metadata::trusted true >/dev/null 2>&1; then
+       gio set "$HOME/桌面/asry.desktop" metadata::trusted true >/dev/null 2>&1; then
     trusted="$(as_user env DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \
-      gio info -a metadata::trusted "$HOME/桌面/agenthist.desktop" 2>/dev/null | grep -o 'true' | head -1)"
+      gio info -a metadata::trusted "$HOME/桌面/asry.desktop" 2>/dev/null | grep -o 'true' | head -1)"
   fi
   if [ "$trusted" = "true" ]; then
     echo "✓ 桌面图标已信任"
@@ -252,7 +252,7 @@ DESKTOP
   fi
   update-desktop-database "$HOME/.local/share/applications" >/dev/null 2>&1 || true
   gtk-update-icon-cache -f -t "$HOME/.local/share/icons/hicolor" >/dev/null 2>&1 || true
-  echo "✓ 桌面快捷方式 $HOME/桌面/agenthist.desktop"
+  echo "✓ 桌面快捷方式 $HOME/桌面/asry.desktop"
 
   # --- 2.5) 固定到左侧导航栏（Ubuntu dock）---
   do_pin_dock
@@ -260,7 +260,7 @@ DESKTOP
   # --- 3) systemd unit ---
   cat > "$UNIT" <<UNITEOF
 [Unit]
-Description=Session Viewer (agenthist) — 聚合 codex/claude/pi/hermes 会话历史
+Description=Agent Sessionary (agent-sessionary) — 聚合 codex/claude/pi/hermes 会话历史
 Documentation=file://$APP_DIR/README.md
 After=network.target
 ConditionPathExists=$SERVER_JS
@@ -273,14 +273,14 @@ Type=simple
 # 走 wrapper 而不是直写 node：node 路径含版本号，升级后会失效
 ExecStart=$SVC_BIN
 WorkingDirectory=$APP_DIR
-Environment=AGENTHIST_NO_BROWSER=1
-Environment=AGENTHIST_PORT=8347
+Environment=ASRY_NO_BROWSER=1
+Environment=ASRY_PORT=8347
 # 崩溃自动重启；正常退出（exit 0）不重启
 Restart=on-failure
 RestartSec=3
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=agenthist
+SyslogIdentifier=agent-sessionary
 
 [Install]
 WantedBy=default.target
@@ -294,14 +294,14 @@ UNITEOF
   # enable：写 default.target.wants 软链。systemctl enable 在 sandbox 里连不上总线，
   # 所以直接建软链（等价于 systemctl --user enable）
   mkdir -p "$UNIT_DIR/default.target.wants"
-  ln -sf "$UNIT" "$UNIT_DIR/default.target.wants/agenthist.service"
-  if [ -L "$UNIT_DIR/default.target.wants/agenthist.service" ]; then
+  ln -sf "$UNIT" "$UNIT_DIR/default.target.wants/asry.service"
+  if [ -L "$UNIT_DIR/default.target.wants/asry.service" ]; then
     echo "✓ 已设为开机自启（default.target.wants 软链）"
   else
     echo "! 自启软链创建失败"
   fi
 
-  sd_call RestartUnit ss agenthist.service replace >/dev/null
+  sd_call RestartUnit ss asry.service replace >/dev/null
   sleep 2
   local st; st="$(sd_unit_state)"
   if [ "$st" = "active" ]; then
@@ -320,16 +320,16 @@ UNITEOF
   if curl -s -o /dev/null --max-time 4 http://127.0.0.1:8347/api/models; then
     echo "✓ 健康检查通过：http://127.0.0.1:8347"
   else
-    echo "! 健康检查失败：journalctl --user -u agenthist -n 50 --no-pager"
+    echo "! 健康检查失败：journalctl --user -u agent-sessionary -n 50 --no-pager"
   fi
 }
 
 # ---------------------------------------------------------------- uninstall
 do_uninstall() {
   do_unpin_dock
-  sd_call StopUnit ss agenthist.service replace >/dev/null
-  rm -f "$UNIT_DIR/default.target.wants/agenthist.service"
-  rm -f "$UNIT" "$DESKTOP_APPS" "$HOME/桌面/agenthist.desktop" "$ICON"
+  sd_call StopUnit ss asry.service replace >/dev/null
+  rm -f "$UNIT_DIR/default.target.wants/asry.service"
+  rm -f "$UNIT" "$DESKTOP_APPS" "$HOME/桌面/asry.desktop" "$ICON"
   sd_call Reload >/dev/null
   echo "已撤销服务与桌面图标（$SVC_BIN / $OPEN_BIN 保留，可手动删）"
 }

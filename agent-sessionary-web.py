@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-agenthist-web —— claude code / codex / pi 历史会话浏览器（本地 Web 版）
+agent-sessionary-web —— claude code / codex / pi 历史会话浏览器（本地 Web 版）
 
-启动:  agenthist-web.py [--port 8377]
+启动:  agent-sessionary-web.py [--port 8377]
 浏览器: http://localhost:8377
 
 功能:
@@ -22,7 +22,7 @@ from urllib.parse import urlparse, parse_qs, quote
 HOME = os.path.expanduser("~")
 AGENTS = ("claude", "codex", "pi")
 
-# ================================================================ 解析器（与 agenthist CLI 同源）
+# ================================================================ 解析器（与 agent-sessionary CLI 同源）
 INJECT_PREFIXES = (
     "<skills_instructions", "<user_instructions", "<environment_context",
     "<turn_context", "# AGENTS.md instructions", "<ENVIRONMENT",
@@ -439,7 +439,7 @@ PAGE = r"""<!DOCTYPE html>
 <html lang="zh"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>agenthist · 会话历史</title>
+<title>agent-sessionary · 会话历史</title>
 <style>
 :root{
   --bg:#16181d; --bg2:#1d2026; --bg3:#242830; --line:#2e3340;
@@ -507,7 +507,7 @@ kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding
 
 <div id="side">
   <div id="topbar">
-    <h1><span class="dot"></span>agenthist 会话历史</h1>
+    <h1><span class="dot"></span>agent-sessionary 会话历史</h1>
     <div id="filters">
       <span class="chip a-claude on" data-a="claude">Claude</span>
       <span class="chip a-codex on" data-a="codex">Codex</span>
@@ -529,7 +529,7 @@ kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding
     <button class="act" id="btn-export">⬇ 导出 MD</button>
   </div>
   <div id="empty"><div class="big">🗂</div><div>左侧选择一个会话，或输入关键词回车全文搜索</div>
-    <div style="font-size:12px">恢复命令也可在终端用 <kbd>agenthist resume &lt;ID前缀&gt; --exec</kbd></div></div>
+    <div style="font-size:12px">恢复命令也可在终端用 <kbd>agent-sessionary resume &lt;ID前缀&gt; --exec</kbd></div></div>
   <div id="msgs"><div class="wrap" id="msgwrap"></div></div>
 </div>
 <div id="toast"></div>
@@ -636,13 +636,13 @@ loadList();
 
 # ================================================================ main
 def main():
-    ap = argparse.ArgumentParser(description="agenthist web UI")
+    ap = argparse.ArgumentParser(description="agent-sessionary web UI")
     ap.add_argument("--port", type=int, default=8377)
     ap.add_argument("--host", default="127.0.0.1")
     args = ap.parse_args()
     srv = ThreadingHTTPServer((args.host, args.port), Handler)
     url = f"http://localhost:{args.port}"
-    print(f"agenthist-web 已启动 → {url}  (Ctrl+C 停止)")
+    print(f"agent-sessionary-web 已启动 → {url}  (Ctrl+C 停止)")
     try:
         import webbrowser
         webbrowser.open(url)

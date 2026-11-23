@@ -1,4 +1,4 @@
-# Session Viewer · 会话历史查看器
+# Agent Sessionary · 会话馆
 
 聚合查看 / 恢复 **Codex CLI**、**Claude Code**、**Pi**、**Hermes** 的历史会话。
 
@@ -8,9 +8,9 @@
 > 本 README 记录的是实现细节、跨平台差异和踩坑，面向要改代码的人。
 
 ```bash
-node agenthist-server.js          # 默认 8347
-AGENTHIST_PORT=9000 node agenthist-server.js
-AGENTHIST_NO_BROWSER=1 node agenthist-server.js   # 不自动开浏览器（被常驻服务拉起时用）
+node agent-sessionary-server.js          # 默认 8347
+ASRY_PORT=9000 node agent-sessionary-server.js
+ASRY_NO_BROWSER=1 node agent-sessionary-server.js   # 不自动开浏览器（被常驻服务拉起时用）
 ```
 
 零依赖，不装 npm 包，只用 Node 内置模块。
@@ -52,7 +52,7 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1   # 桌面快捷 + 开机
 .\install.ps1 -NoDesktop       # 不建桌面快捷
 ```
 
-Windows 侧刻意不写系统目录、不改 HKLM、不注册系统服务：常驻靠当前用户的启动文件夹，卸载就是删两个 `.lnk` 加一个 `%USERPROFILE%\.agenthist` 目录，用户也能在「任务管理器 → 启动」里自己关掉自启。
+Windows 侧刻意不写系统目录、不改 HKLM、不注册系统服务：常驻靠当前用户的启动文件夹，卸载就是删两个 `.lnk` 加一个 `%USERPROFILE%\.agent-sessionary` 目录，用户也能在「任务管理器 → 启动」里自己关掉自启。
 
 macOS 侧同样不写系统级目录：常驻是当前用户的 `~/Library/LaunchAgents`，卸载就是 `bootout` + 删两个 `.app` 和一个 plist，不留系统残留。
 
@@ -61,21 +61,21 @@ macOS 侧同样不写系统级目录：常驻是当前用户的 `~/Library/Launc
 | 方式 | 命令 / 入口 |
 |---|---|
 | **左侧导航栏** | 点 dock 上的图标（已固定，与桌面图标同一入口）← 最快 |
-| **桌面图标** | 双击桌面「会话历史查看器」 |
-| 应用菜单 | 搜索 Session Viewer / 会话历史查看器 |
-| 命令行（独立窗口） | `agenthist-open --app` |
-| 命令行（普通标签页） | `agenthist-open --tab` |
-| 带筛选 | `agenthist-open --app --tool=claude` / `--q=关键词` |
+| **桌面图标** | 双击桌面「会话馆」 |
+| 应用菜单 | 搜索 Agent Sessionary / 会话馆 |
+| 命令行（独立窗口） | `asry-open --app` |
+| 命令行（普通标签页） | `asry-open --tab` |
+| 带筛选 | `asry-open --app --tool=claude` / `--q=关键词` |
 | 直接开浏览器 | `http://localhost:8347` |
 
-`agenthist-open` 会自动探活，服务没起就先拉起来（优先 `systemctl --user start`，失败则直接起进程）。
+`asry-open` 会自动探活，服务没起就先拉起来（优先 `systemctl --user start`，失败则直接起进程）。
 
 ### 窗口尺寸
 
 默认 **1900×1150** 的独立 window（无地址栏，类原生应用）。要改：
 
 ```bash
-AGENTHIST_WIN_W=1600 AGENTHIST_WIN_H=900 agenthist-open --app
+ASRY_WIN_W=1600 ASRY_WIN_H=900 asry-open --app
 ```
 
 ## 服务常驻（Linux）
@@ -92,28 +92,28 @@ AGENTHIST_WIN_W=1600 AGENTHIST_WIN_H=900 agenthist-open --app
 
 | 层 | 机制 | 作用 |
 |---|---|---|
-| 开机自启 | `~/.config/systemd/user/agenthist.service`（enabled 软链） | 登录即起 |
+| 开机自启 | `~/.config/systemd/user/asry.service`（enabled 软链） | 登录即起 |
 | 免登录自启 | `loginctl enable-linger $USER` | 无人登录也常驻 |
 | 崩溃自愈 | `Restart=on-failure` + `RestartSec=3` | 挂掉 3 秒后自动换 PID |
 
 日常运维：
 
 ```bash
-systemctl --user status agenthist     # 看状态
-systemctl --user restart agenthist    # 重启（改过代码后）
-systemctl --user stop agenthist       # 停
-journalctl --user -u agenthist -f     # 跟日志
+systemctl --user status asry     # 看状态
+systemctl --user restart asry    # 重启（改过代码后）
+systemctl --user stop asry       # 停
+journalctl --user -u asry -f     # 跟日志
 ```
 
-**服务入口是 `bin/agenthist-service` 而不是直接写 node**，原因有两个：
+**服务入口是 `bin/asry-service` 而不是直接写 node**，原因有两个：
 
 1. node 路径含版本号（`.../versions/22.22.2/bin/node`），WorkBuddy 升级后旧路径消失，
    unit 会 ExecStart 失败。wrapper 里按「显式指定 → 任意 managed 版本 → PATH」顺序探测。
 2. `DISPLAY` / `XAUTHORITY` 在 X11 / Wayland / 换 DM 下都不一样，写死进 unit 换环境即挂。
 
 两个 wrapper 都会被复制到 `~/.local/bin` 供全局调用，所以**不能写死项目路径**：安装时把项目
-目录记进 `~/.config/agenthist/appdir`，脚本按「`AGENTHIST_HOME` → 自身相对位置 → 该记录」
-三级回找。移动项目目录后重跑 `install.sh` 即可，或临时用 `AGENTHIST_HOME=/新路径` 覆盖。
+目录记进 `~/.config/agent-sessionary/appdir`，脚本按「`ASRY_HOME` → 自身相对位置 → 该记录」
+三级回找。移动项目目录后重跑 `install.sh` 即可，或临时用 `ASRY_HOME=/新路径` 覆盖。
 
 ## 桌面快捷方式
 
@@ -123,9 +123,9 @@ journalctl --user -u agenthist -f     # 跟日志
 
 | 文件 | 作用 |
 |---|---|
-| `~/桌面/agenthist.desktop` | 桌面图标（已打 `metadata::trusted`，双击即开） |
-| `~/.local/share/applications/agenthist.desktop` | 应用菜单里可搜索「会话历史查看器」 |
-| `~/.local/share/icons/hicolor/scalable/apps/agenthist.svg` | 自绘图标（窗口 + 对勾，不依赖系统图标主题） |
+| `~/桌面/asry.desktop` | 桌面图标（已打 `metadata::trusted`，双击即开） |
+| `~/.local/share/applications/asry.desktop` | 应用菜单里可搜索「会话馆」 |
+| `~/.local/share/icons/hicolor/scalable/apps/agent-sessionary.svg` | 自绘图标（窗口 + 对勾，不依赖系统图标主题） |
 | `org.gnome.shell favorite-apps` | 固定到左侧导航栏（Ubuntu dock 的收藏列表），排在 WorkBuddy 后面 |
 
 取消固定：`./install.sh --uninstall` 会自动从导航栏摘掉；也可在图标上右键「从收藏夹中移除」。
@@ -138,20 +138,20 @@ journalctl --user -u agenthist -f     # 跟日志
 
 | 文件 | 作用 |
 |---|---|
-| 桌面 `会话历史查看器.lnk` | 桌面快捷方式，内嵌 `assets/agenthist.ico`（7 种尺寸，小图标到大图标都清晰） |
-| `%APPDATA%\...\Start Menu\Programs\Startup\Session Viewer.lnk` | 开机自启（登录即起） |
-| `%USERPROFILE%\.agenthist\launch.vbs` | 隐藏窗口启动器：探活 → 起 node（无黑窗）→ 等就绪 → 开浏览器 |
-| `%USERPROFILE%\.agenthist\stop.vbs` | 停止后端（按命令行匹配 `agenthist-server.js`，不误杀其它 node） |
+| 桌面 `会话馆.lnk` | 桌面快捷方式，内嵌 `assets/agent-sessionary.ico`（7 种尺寸，小图标到大图标都清晰） |
+| `%APPDATA%\...\Start Menu\Programs\Startup\Agent Sessionary.lnk` | 开机自启（登录即起） |
+| `%USERPROFILE%\.agent-sessionary\launch.vbs` | 隐藏窗口启动器：探活 → 起 node（无黑窗）→ 等就绪 → 开浏览器 |
+| `%USERPROFILE%\.agent-sessionary\stop.vbs` | 停止后端（按命令行匹配 `agent-sessionary-server.js`，不误杀其它 node） |
 
-另外 `bin/agenthist-open.ps1` 是 Linux 版 `agenthist-open` 的对应物：
+另外 `bin/asry-open.ps1` 是 Linux 版 `asry-open` 的对应物：
 
 ```powershell
-.\bin\agenthist-open.ps1                 # 独立窗口
-.\bin\agenthist-open.ps1 -Tab            # 普通标签页
-.\bin\agenthist-open.ps1 -Tool claude    # 预置筛选
-.\bin\agenthist-open.ps1 -Q 关键词        # 预置搜索
-.\bin\agenthist-open.ps1 -Status         # 看状态
-.\bin\agenthist-open.ps1 -Stop           # 停后端
+.\bin\asry-open.ps1                 # 独立窗口
+.\bin\asry-open.ps1 -Tab            # 普通标签页
+.\bin\asry-open.ps1 -Tool claude    # 预置筛选
+.\bin\asry-open.ps1 -Q 关键词        # 预置搜索
+.\bin\asry-open.ps1 -Status         # 看状态
+.\bin\asry-open.ps1 -Stop           # 停后端
 ```
 
 为什么用 `wscript` + `.vbs` 而不是 `.lnk` 直接指 `node.exe`：直接指 node 会弹一个常驻黑色控制台，
@@ -166,19 +166,19 @@ journalctl --user -u agenthist -f     # 跟日志
 
 > 为什么 `install.ps1` 不注册系统服务：注册服务要管理员权限、写 HKLM，卸载容易留残留。
 > 启动文件夹 + 一个 `.lnk` 已经够实现「登录即起」，而且用户能在「任务管理器 → 启动」里
-> 自己关掉，卸载就是删两个 `.lnk` 加一个 `.agenthist` 目录。
+> 自己关掉，卸载就是删两个 `.lnk` 加一个 `.agent-sessionary` 目录。
 
 ### macOS（`install-mac.sh`）
 
 | 文件 | 作用 |
 |---|---|
-| 桌面 `会话历史查看器.app` | 桌面图标，内嵌 `assets/agenthist.icns`（含 1024，Retina 大图标清晰） |
-| `~/Applications/会话历史查看器.app` | 应用目录里的同一份，可在启动台/聚焦搜到 |
-| `~/Library/LaunchAgents/com.agenthist.viewer.plist` | 登录自启（`RunAtLoad`），崩溃 10 秒后重启（`KeepAlive.SuccessfulExit=false`） |
-| `~/Library/Logs/agenthist/agenthist.err.log` | 服务日志（`tail -f` 可看） |
-| `bin/agenthist-service-mac` | 服务 wrapper：安装时生成，负责补 PATH、找 node、exec server |
+| 桌面 `会话馆.app` | 桌面图标，内嵌 `assets/agent-sessionary.icns`（含 1024，Retina 大图标清晰） |
+| `~/Applications/会话馆.app` | 应用目录里的同一份，可在启动台/聚焦搜到 |
+| `~/Library/LaunchAgents/com.agentsessionary.viewer.plist` | 登录自启（`RunAtLoad`），崩溃 10 秒后重启（`KeepAlive.SuccessfulExit=false`） |
+| `~/Library/Logs/agent-sessionary/agent-sessionary.err.log` | 服务日志（`tail -f` 可看） |
+| `bin/asry-service-mac` | 服务 wrapper：安装时生成，负责补 PATH、找 node、exec server |
 
-`.app` 是**本机生成**的包（`Info.plist` + `MacOS/launch` + `Resources/agenthist.icns`），
+`.app` 是**本机生成**的包（`Info.plist` + `MacOS/launch` + `Resources/agent-sessionary.icns`），
 没有 quarantine 扩展属性，不需要签名或公证。`LSUIElement = true` 让启动器自己不在 Dock 留图标——
 它的职责只是「探活 → 拉起 → 开浏览器 → 退出」，真正的窗口是 Chrome 的 `--app`。
 
@@ -193,10 +193,10 @@ journalctl --user -u agenthist -f     # 跟日志
 ## 启动浏览器的三个坑（2026-11-22 实测）
 
 1. **uid 必须是 1000**：WorkBuddy sandbox 在 user namespace 里把 uid 映射成 0，Chrome 直接报
-   `Running as root without --no-sandbox is not supported` 起不来。`agenthist-open` 检测到 uid 0 时
+   `Running as root without --no-sandbox is not supported` 起不来。`asry-open` 检测到 uid 0 时
    自动套一层 `unshare --user --map-user=1000 --map-group=1000`。
 2. **必须独立 user-data-dir**：用默认 profile 启 `--app` 会被已运行的 Chrome 实例吞掉，
-   退化成普通标签页（静默，无报错）。脚本固定用 `~/.cache/agenthist-chrome`。
+   退化成普通标签页（静默，无报错）。脚本固定用 `~/.cache/asry-chrome`。
 3. **必须 `--disable-gpu`**：容器/root 环境 GPU 初始化崩（`exit_code=8704`、`MESA: Failed to query drm device`），
    不加会导致进程活着但没有窗口。
 
@@ -206,23 +206,25 @@ journalctl --user -u agenthist -f     # 跟日志
 ## 目录结构
 
 ```
-agenthist/
-├── agenthist-server.js          入口：起 HTTP 服务 + 自动开浏览器
-├── agenthist.py                 早期 Python 原型（已废弃，不被任何代码引用，仅作历史留存）
-├── agenthist-web.py             同上：Python 原型时代的 Web 版
-├── install.sh                   Linux 安装（systemd + .desktop + 左侧栏固定）
-├── install-mac.sh               macOS 安装（launchd LaunchAgent + .app + .icns）
-├── install.ps1                  Windows 安装（启动文件夹 + .lnk + 隐藏窗口启动器）
+agent-sessionary/
+agent-sessionary/
+├── agent-sessionary-server.js     入口：起 HTTP 服务 + 自动开浏览器
+├── agent-sessionary-cli.py        早期 Python 原型（已废弃，不被任何代码引用，仅作历史留存）
+├── agent-sessionary-web.py        同上：Python 原型时代的 Web 版
+├── install.sh                     Linux 安装（systemd + .desktop + 左侧栏固定）
+├── install-mac.sh                 macOS 安装（launchd LaunchAgent + .app + .icns）
+├── install.ps1                    Windows 安装（启动文件夹 + .lnk + 隐藏窗口启动器）
+├── push-to-github.sh              建好空仓库后一键推送
 ├── assets/
-│   ├── agenthist.ico            Windows 图标（16→256 七种尺寸）
-│   ├── agenthist.icns           macOS 图标（icp4…ic10，含 1024）
-│   └── agenthist-256.png        文档用大图
+│   ├── agent-sessionary.ico       Windows 图标（16→256 七种尺寸）
+│   ├── agent-sessionary.icns      macOS 图标（icp4…ic10，含 1024）
+│   └── agent-sessionary-256.png   文档用大图
 ├── tools/
-│   └── make-icon.py             从零生成 ico / icns / png（PIL，4× 超采样抗锯齿）
+│   └── make-icon.py               从零生成 ico / icns / png（PIL，4× 超采样抗锯齿）
 ├── bin/
-│   ├── agenthist-service        服务 wrapper：探测 node、补 PATH 与运行时环境、exec server
-│   ├── agenthist-open           开窗口：探活 → 拉起 → Chrome 独立大窗口（Linux）
-│   └── agenthist-open.ps1       同上，Windows 版（Chrome/Edge --app）
+│   ├── asry-service               服务 wrapper：探测 node、补 PATH 与运行时环境、exec server
+│   ├── asry-open                  开窗口：探活 → 拉起 → Chrome 独立大窗口（Linux）
+│   └── asry-open.ps1              同上，Windows 版（Chrome/Edge --app）
 ├── lib/
 │   ├── config.js                常量（端口、缓存时长、超时、注入前缀）
 │   ├── platform.js              平台差异层：命令定位（PATHEXT）、.cmd 转发、开 URL
@@ -416,7 +418,7 @@ codex resume --no-daemon 01a200f5-aaac-7f70-82a1-b25059212597
    - Linux 按 freedesktop 规范写 `files/` + `info/*.trashinfo`，重名自动加 `.1`、`.2` 不覆盖。
    - macOS 直接 `rename` 进 `~/.Trash`，重名按系统习惯变成 `name 2.jsonl`（编号在扩展名前）。
      默认不走 Finder（`osascript`）——那需要 Automation 权限，无人值守时会被 TCC 静默拒绝；
-     想用 Finder 删（换取「放回原处」菜单）可 `AGENTHIST_MAC_TRASH=finder`，失败自动退回。
+     想用 Finder 删（换取「放回原处」菜单）可 `ASRY_MAC_TRASH=finder`，失败自动退回。
    - Windows 走 Shell API（`Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile` +
      `SendToRecycleBin`），与在资源管理器按 Delete 等效。**不能用 `fs.unlink`** —— 那是真删，
      进不了回收站。
@@ -505,7 +507,7 @@ macOS 首次上机请重点看：双击桌面 `.app` 能否打开、终端恢复
   必须 `start "" "C:\path\x.cmd"`，那个空标题占位不能省。
 - **systemd 用户服务的 PATH 只有 `/usr/bin:/bin`**：codex / claude / pi 装在 `~/.npm-global/bin`
   这类用户目录里，不补 PATH 会导致页面内恢复报「未找到命令」、`pi --list-models` 返回空。
-  `bin/agenthist-service` 已把常见用户 bin 追加到 PATH 末尾（不覆盖系统路径优先级）。
+  `bin/asry-service` 已把常见用户 bin 追加到 PATH 末尾（不覆盖系统路径优先级）。
 - **pi --session**：cwd 必须与会话原目录一致，否则只打印提示不执行。
 - **前端不再内嵌在 Node 模板字符串里**：拆分后 HTML/CSS/JS 是独立文件，不存在模板转义问题。
 - **列表按钮不要用内联 `onclick` 拼路径**：会话路径含中文、括号、单引号时会打断属性。

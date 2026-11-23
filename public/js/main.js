@@ -1,7 +1,7 @@
 /* 入口：装配各模块并启动 */
 "use strict";
 
-// 支持从 URL 预置筛选（agenthist-open --tool=xx / --q=xx 时用）
+// 支持从 URL 预置筛选（asry-open --tool=xx / --q=xx 时用）
 //   ?tool=claude&q=关键字
 function applyUrlPrefs() {
   let p;

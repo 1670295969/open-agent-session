@@ -1,4 +1,4 @@
-# Session Viewer —— Windows 安装脚本
+# Agent Sessionary —— Windows 安装脚本
 #
 # 与 Linux 的 install.sh 一一对应，把「常驻 / 开机自启 / 桌面图标」三件事做完：
 #
@@ -33,16 +33,16 @@ $ErrorActionPreference = 'Stop'
 
 # ---------- 路径 ----------
 $AppDir     = $PSScriptRoot
-$ServerJs   = Join-Path $AppDir 'agenthist-server.js'
-$IcoPath    = Join-Path $AppDir 'assets\agenthist.ico'
+$ServerJs   = Join-Path $AppDir 'agent-sessionary-server.js'
+$IcoPath    = Join-Path $AppDir 'assets\agent-sessionary.ico'
 
 $HomeDir    = $env:USERPROFILE
-$DataDir    = Join-Path $HomeDir '.agenthist'
+$DataDir    = Join-Path $HomeDir '.agent-sessionary'
 $RunVbs     = Join-Path $DataDir 'launch.vbs'
 $StopVbs    = Join-Path $DataDir 'stop.vbs'
-$DesktopLnk = Join-Path ([Environment]::GetFolderPath('Desktop')) '会话历史查看器.lnk'
+$DesktopLnk = Join-Path ([Environment]::GetFolderPath('Desktop')) '会话馆.lnk'
 $StartupDir = [Environment]::GetFolderPath('Startup')
-$StartupLnk = Join-Path $StartupDir 'Session Viewer.lnk'
+$StartupLnk = Join-Path $StartupDir 'Agent Sessionary.lnk'
 $Port       = 8347
 
 function Write-Step($m) { Write-Host "  $m" -ForegroundColor Gray }
@@ -109,7 +109,7 @@ function New-Launcher($nodeExe, $browser) {
     }
 
     $vbs = @'
-' Session Viewer 隐藏窗口启动器（由 install.ps1 生成，删掉不影响服务本身）
+' Agent Sessionary 隐藏窗口启动器（由 install.ps1 生成，删掉不影响服务本身）
 Option Explicit
 Dim sh, node, js, dir, port, url, browser, i, up, xhr
 
@@ -169,7 +169,7 @@ BROWSER_LINE_PLACEHOLDER
     [System.IO.File]::WriteAllText($RunVbs, $vbs, [System.Text.Encoding]::Unicode)
 
     $stop = @'
-' 停止 Session Viewer 后端（按命令行匹配，不误杀其它 node 进程）
+' 停止 Agent Sessionary 后端（按命令行匹配，不误杀其它 node 进程）
 Option Explicit
 On Error Resume Next
 Dim svc, procs, p, n
@@ -178,13 +178,13 @@ Set svc = GetObject("winmgmts:\\.\root\cimv2")
 Set procs = svc.ExecQuery("SELECT ProcessId, CommandLine FROM Win32_Process WHERE Name='node.exe'")
 For Each p In procs
   If Not IsNull(p.CommandLine) Then
-    If InStr(LCase(p.CommandLine), "agenthist-server.js") > 0 Then
+    If InStr(LCase(p.CommandLine), "agent-sessionary-server.js") > 0 Then
       p.Terminate()
       n = n + 1
     End If
   End If
 Next
-WScript.Echo "已停止 " & n & " 个 Session Viewer 进程"
+WScript.Echo "已停止 " & n & " 个 Agent Sessionary 进程"
 '@
     [System.IO.File]::WriteAllText($StopVbs, $stop, [System.Text.Encoding]::Unicode)
 
@@ -220,19 +220,19 @@ function Get-Wscript {
 # ---------- 状态 ----------
 function Show-Status {
     $node = Find-Node
-    Write-Host "Session Viewer 状态" -ForegroundColor Cyan
+    Write-Host "Agent Sessionary 状态" -ForegroundColor Cyan
     Write-Host ("  项目目录    " + $AppDir)
     Write-Host ("  node        " + $(if ($node) { $node } else { '未找到（必装）' }))
     Write-Host ("  服务地址    http://127.0.0.1:$Port  " + $(if (Test-Server) { '运行中' } else { '未运行' }))
     Write-Host ("  隐藏启动器  " + $(if (Test-Path -LiteralPath $RunVbs) { '已生成' } else { '未生成' }))
     Write-Host ("  桌面快捷    " + $(if (Test-Path -LiteralPath $DesktopLnk) { '已创建' } else { '未创建' }))
     Write-Host ("  开机自启    " + $(if (Test-Path -LiteralPath $StartupLnk) { '已启用' } else { '未启用' }))
-    Write-Host ("  图标        " + $(if (Test-Path -LiteralPath $IcoPath) { 'assets\agenthist.ico' } else { '缺失' }))
+    Write-Host ("  图标        " + $(if (Test-Path -LiteralPath $IcoPath) { 'assets\agent-sessionary.ico' } else { '缺失' }))
 }
 
 # ---------- 卸载 ----------
 function Do-Uninstall {
-    Write-Host "卸载 Session Viewer" -ForegroundColor Cyan
+    Write-Host "卸载 Agent Sessionary" -ForegroundColor Cyan
     if (Test-Path -LiteralPath $StopVbs) {
         & (Get-Wscript) $StopVbs
         Write-Ok "已停止后端"
@@ -249,7 +249,7 @@ function Do-Uninstall {
 
 # ---------- 安装 ----------
 function Do-Install {
-    Write-Host "安装 Session Viewer（Windows）" -ForegroundColor Cyan
+    Write-Host "安装 Agent Sessionary（Windows）" -ForegroundColor Cyan
 
     $node = Find-Node
     if (-not $node) { throw "未找到 node.exe。请先安装 Node.js 18+ 并确保 node 在 PATH 中。" }
@@ -259,7 +259,7 @@ function Do-Install {
 
     $icon = $IcoPath
     if (-not (Test-Path -LiteralPath $icon)) {
-        Write-Warn2 "图标缺失（assets\agenthist.ico），快捷方式将用系统默认图标"
+        Write-Warn2 "图标缺失（assets\agent-sessionary.ico），快捷方式将用系统默认图标"
         $icon = $null
     }
 
@@ -272,11 +272,11 @@ function Do-Install {
     $wscript = Get-Wscript
     if (-not $NoDesktop) {
         New-Shortcut $DesktopLnk $wscript ('"' + $RunVbs + '"') $icon `
-            'Session Viewer — 聚合查看 Codex / Claude / Pi / Hermes 会话'
+            'Agent Sessionary — 聚合查看 Codex / Claude / Pi / Hermes 会话'
         Write-Ok "桌面快捷方式 $DesktopLnk"
     }
     if (-not $NoAutoStart) {
-        New-Shortcut $StartupLnk $wscript ('"' + $RunVbs + '"') $icon 'Session Viewer 开机自启'
+        New-Shortcut $StartupLnk $wscript ('"' + $RunVbs + '"') $icon 'Agent Sessionary 开机自启'
         Write-Ok "开机自启 $StartupLnk"
     }
 
@@ -291,7 +291,7 @@ function Do-Install {
     else { Write-Warn2 "服务未在 20 秒内就绪，请从桌面图标重试" }
 
     Write-Host ""
-    Write-Host "完成。日常使用：双击桌面「会话历史查看器」。" -ForegroundColor Green
+    Write-Host "完成。日常使用：双击桌面「会话馆」。" -ForegroundColor Green
     Write-Host "  停止服务：wscript `"$StopVbs`"" -ForegroundColor Gray
     Write-Host "  开机自启可在「任务管理器 → 启动」里随时关闭。" -ForegroundColor Gray
 }

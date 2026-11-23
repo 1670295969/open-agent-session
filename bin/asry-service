@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# agenthist-service —— Session Viewer 服务入口 wrapper（供 systemd 调用）
+# asry-service —— Agent Sessionary 服务入口 wrapper（供 systemd 调用）
 #
 # 为什么要 wrapper 而不是在 unit 里直接写 node 全路径：
 #   1. node 路径含版本号（.../versions/22.22.2/bin/node），WorkBuddy 升级后旧路径消失，
@@ -14,27 +14,27 @@ set -uo pipefail
 # install.sh 会把本脚本复制到 ~/.local/bin 并由 install 时写入 appdir 记录，
 # 所以不写死路径：环境变量 → 本脚本上层的项目根 → 安装时记录的路径。
 resolve_app_dir() {
-  if [ -n "${AGENTHIST_HOME:-}" ] && [ -f "$AGENTHIST_HOME/agenthist-server.js" ]; then
-    printf '%s' "$AGENTHIST_HOME"; return 0
+  if [ -n "${ASRY_HOME:-}" ] && [ -f "$ASRY_HOME/agent-sessionary-server.js" ]; then
+    printf '%s' "$ASRY_HOME"; return 0
   fi
   local self cand
   self="$(readlink -f "$0" 2>/dev/null || printf '%s' "$0")"
   cand="$(cd "$(dirname "$self")/.." 2>/dev/null && pwd)"
-  if [ -n "$cand" ] && [ -f "$cand/agenthist-server.js" ]; then
+  if [ -n "$cand" ] && [ -f "$cand/agent-sessionary-server.js" ]; then
     printf '%s' "$cand"; return 0
   fi
-  cand="$HOME/.config/agenthist/appdir"
+  cand="$HOME/.config/agent-sessionary/appdir"
   if [ -f "$cand" ]; then
     cand="$(cat "$cand")"
-    if [ -f "$cand/agenthist-server.js" ]; then printf '%s' "$cand"; return 0; fi
+    if [ -f "$cand/agent-sessionary-server.js" ]; then printf '%s' "$cand"; return 0; fi
   fi
   return 1
 }
 
 APP_DIR="$(resolve_app_dir)" || APP_DIR=""
-ENTRY="$APP_DIR/agenthist-server.js"
+ENTRY="$APP_DIR/agent-sessionary-server.js"
 
-log() { printf '[agenthist-service] %s\n' "$*" >&2; }
+log() { printf '[asry-service] %s\n' "$*" >&2; }
 
 if [ ! -f "$ENTRY" ]; then
   log "找不到服务入口: $ENTRY"
@@ -44,8 +44,8 @@ fi
 # ---------- 1) 选 node ----------
 # 顺序：显式指定 → WorkBuddy 自带（最高版本） → PATH 里的 node
 pick_node() {
-  if [ -n "${AGENTHIST_NODE:-}" ] && [ -x "${AGENTHIST_NODE}" ]; then
-    printf '%s' "${AGENTHIST_NODE}"; return 0
+  if [ -n "${ASRY_NODE:-}" ] && [ -x "${ASRY_NODE}" ]; then
+    printf '%s' "${ASRY_NODE}"; return 0
   fi
   # WorkBuddy 自带的 node（路径含版本号，故按目录探测最高版本）
   local v
@@ -93,8 +93,8 @@ log "PATH 已补全用户目录"
 log "XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-<none>} DBUS=${DBUS_SESSION_BUS_ADDRESS:-<none>}"
 
 # ---------- 3) 起服务 ----------
-export AGENTHIST_NO_BROWSER="${AGENTHIST_NO_BROWSER:-1}"
-export AGENTHIST_PORT="${AGENTHIST_PORT:-8347}"
+export ASRY_NO_BROWSER="${ASRY_NO_BROWSER:-1}"
+export ASRY_PORT="${ASRY_PORT:-8347}"
 
 cd "$APP_DIR" || exit 78
 exec "$NODE_BIN" "$ENTRY"

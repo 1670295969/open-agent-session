@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# agenthist-open —— 在浏览器里打开 Session Viewer（网页版，窗口自由缩放）
+# asry-open —— 在浏览器里打开 Agent Sessionary（网页版，窗口自由缩放）
 #
 # 用法：
-#   agenthist-open                  独立无地址栏大窗口（默认，推荐）
-#   agenthist-open --tab            退回普通浏览器标签页
-#   agenthist-open --tool=claude    只打开 claude 的会话
-#   agenthist-open --q=关键词        打开并预先搜索
-#   AGENTHIST_WIN_W=1600 AGENTHIST_WIN_H=900 agenthist-open
+#   asry-open                  独立无地址栏大窗口（默认，推荐）
+#   asry-open --tab            退回普通浏览器标签页
+#   asry-open --tool=claude    只打开 claude 的会话
+#   asry-open --q=关键词        打开并预先搜索
+#   ASRY_WIN_W=1600 ASRY_WIN_H=900 asry-open
 #
 # 服务侧：不活就拉起来。优先 systemctl --user start（能长期常驻），
 # 失败则直接起进程兜底，保证双击图标永远有结果。
@@ -19,33 +19,33 @@
 
 set -uo pipefail
 
-PORT="${AGENTHIST_PORT:-8347}"
+PORT="${ASRY_PORT:-8347}"
 BASE="http://127.0.0.1:${PORT}"
-PROFILE_DIR="${AGENTHIST_PROFILE:-$HOME/.cache/agenthist-chrome}"
+PROFILE_DIR="${ASRY_PROFILE:-$HOME/.cache/asry-chrome}"
 
 # ---- 定位项目目录 ----
 # 本脚本会被 install.sh 复制到 ~/.local/bin 去全局调用，所以不能写死项目路径。
 # 依次尝试：环境变量 → 符号链接/实际位置的上层目录 → 安装时记录的路径。
 resolve_app_dir() {
-  if [ -n "${AGENTHIST_HOME:-}" ] && [ -f "$AGENTHIST_HOME/agenthist-server.js" ]; then
-    printf '%s' "$AGENTHIST_HOME"; return 0
+  if [ -n "${ASRY_HOME:-}" ] && [ -f "$ASRY_HOME/agent-sessionary-server.js" ]; then
+    printf '%s' "$ASRY_HOME"; return 0
   fi
   local self cand
   self="$(readlink -f "$0" 2>/dev/null || printf '%s' "$0")"
   cand="$(cd "$(dirname "$self")/.." 2>/dev/null && pwd)"
-  if [ -n "$cand" ] && [ -f "$cand/agenthist-server.js" ]; then
+  if [ -n "$cand" ] && [ -f "$cand/agent-sessionary-server.js" ]; then
     printf '%s' "$cand"; return 0
   fi
-  cand="$HOME/.config/agenthist/appdir"
+  cand="$HOME/.config/agent-sessionary/appdir"
   if [ -f "$cand" ]; then
     cand="$(cat "$cand")"
-    if [ -f "$cand/agenthist-server.js" ]; then printf '%s' "$cand"; return 0; fi
+    if [ -f "$cand/agent-sessionary-server.js" ]; then printf '%s' "$cand"; return 0; fi
   fi
   return 1
 }
 
 APP_DIR="$(resolve_app_dir)" || APP_DIR=""
-SERVER_JS="$APP_DIR/agenthist-server.js"
+SERVER_JS="$APP_DIR/agent-sessionary-server.js"
 
 QS=""; MODE="app"
 for arg in "$@"; do
@@ -63,12 +63,12 @@ URL="$BASE/"
 alive() { curl -s -o /dev/null --max-time 2 "$BASE/api/models"; }
 
 if ! alive; then
-  echo "Session Viewer 未运行，正在启动…"
+  echo "Agent Sessionary 未运行，正在启动…"
   # 首选 systemd：能常驻、能开机自启、崩溃自动重启
-  if ! systemctl --user start agenthist.service 2>/dev/null; then
+  if ! systemctl --user start asry.service 2>/dev/null; then
     # 兜底：systemd 不可用（比如在 sandbox 里）就直接起进程
-    if [ -x "$HOME/.local/bin/agenthist-service" ]; then
-      setsid "$HOME/.local/bin/agenthist-service" >/dev/null 2>&1 &
+    if [ -x "$HOME/.local/bin/asry-service" ]; then
+      setsid "$HOME/.local/bin/asry-service" >/dev/null 2>&1 &
     elif [ -n "$SERVER_JS" ] && [ -f "$SERVER_JS" ] && command -v node >/dev/null 2>&1; then
       setsid node "$SERVER_JS" >/dev/null 2>&1 &
     fi
@@ -78,17 +78,17 @@ fi
 
 if ! alive; then
   # 弹窗提示比静默退出有用
-  msg="Session Viewer 启动失败：$BASE 无响应\n\n排查：journalctl --user -u agenthist -n 50 --no-pager"
+  msg="Agent Sessionary 启动失败：$BASE 无响应\n\n排查：journalctl --user -u agent-sessionary -n 50 --no-pager"
   if command -v zenity >/dev/null 2>&1; then
     zenity --error --text="$msg" 2>/dev/null &
   elif command -v notify-send >/dev/null 2>&1; then
-    notify-send "Session Viewer" "$msg" 2>/dev/null
+    notify-send "Agent Sessionary" "$msg" 2>/dev/null
   fi
   echo -e "$msg" >&2
   exit 1
 fi
 
-echo "Session Viewer: $URL"
+echo "Agent Sessionary: $URL"
 
 # ---- 2) 桌面环境（桌面会话里通常已有，缺失才补）----
 if [ -z "${DISPLAY:-}" ] && [ -z "${WAYLAND_DISPLAY:-}" ]; then
@@ -101,8 +101,8 @@ fi
 [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ] && [ -S /run/user/1000/bus ] && \
   export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
 
-WIN_W="${AGENTHIST_WIN_W:-1900}"
-WIN_H="${AGENTHIST_WIN_H:-1150}"
+WIN_W="${ASRY_WIN_W:-1900}"
+WIN_H="${ASRY_WIN_H:-1150}"
 
 APP_FLAGS=(
   --user-data-dir="$PROFILE_DIR"
@@ -115,7 +115,7 @@ APP_FLAGS=(
 launch_app() {
   local browser="$1"
   mkdir -p "$PROFILE_DIR"
-  nohup "$browser" "${APP_FLAGS[@]}" --app="$URL" --class=SessionViewer \
+  nohup "$browser" "${APP_FLAGS[@]}" --app="$URL" --class=AgentSessionary \
     >"$PROFILE_DIR/launch.log" 2>&1 &
 }
 
@@ -138,11 +138,11 @@ for browser in google-chrome google-chrome-stable chromium chromium-browser; do
     unshare --user --map-user=1000 --map-group=1000 -- \
       env DISPLAY="${DISPLAY:-}" XAUTHORITY="${XAUTHORITY:-}" \
           DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-}" \
-          HOME="$HOME" AGENTHIST_BROWSER="$browser" MODE="$MODE" \
+          HOME="$HOME" ASRY_BROWSER="$browser" MODE="$MODE" \
           URL="$URL" PROFILE_DIR="$PROFILE_DIR" \
       bash -c "$(declare -f launch_app); APP_FLAGS=($(printf '%q ' "${APP_FLAGS[@]}")); \
-               if [ \"\$MODE\" = app ]; then launch_app \"\$AGENTHIST_BROWSER\"; \
-               else setsid \"\$AGENTHIST_BROWSER\" \"\$URL\" >/dev/null 2>&1 & fi" \
+               if [ \"\$MODE\" = app ]; then launch_app \"\$ASRY_BROWSER\"; \
+               else setsid \"\$ASRY_BROWSER\" \"\$URL\" >/dev/null 2>&1 & fi" \
       >/dev/null 2>&1
   else
     launch_app "$browser"

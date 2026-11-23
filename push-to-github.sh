@@ -2,7 +2,7 @@
 # 一键推送到 GitHub —— 仓库需先在网页上建好（当前令牌没有建仓权限）
 #
 # 用法：
-#   ./push-to-github.sh                  # 默认 agenthist
+#   ./push-to-github.sh                  # 默认 agent-sessionary
 #   ./push-to-github.sh my-repo          # 换仓库名
 #
 # 前提：已在 https://github.com/new 建好同名**空仓库**（不要勾 README / gitignore / license）
@@ -12,7 +12,7 @@
 # 443 端口的 ssh.github.com 可用。
 set -uo pipefail
 
-REPO_NAME="${1:-agenthist}"
+REPO_NAME="${1:-agent-sessionary}"
 OWNER="$(gh api user --jq .login 2>/dev/null || echo "")"
 if [ -z "$OWNER" ]; then
   echo "✗ 取不到 GitHub 用户名，先跑 gh auth status" >&2
