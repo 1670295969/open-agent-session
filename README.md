@@ -207,7 +207,6 @@ journalctl --user -u asry -f     # 跟日志
 
 ```
 agent-sessionary/
-agent-sessionary/
 ├── agent-sessionary-server.js     入口：起 HTTP 服务 + 自动开浏览器
 ├── agent-sessionary-cli.py        早期 Python 原型（已废弃，不被任何代码引用，仅作历史留存）
 ├── agent-sessionary-web.py        同上：Python 原型时代的 Web 版
