@@ -42,7 +42,7 @@ function itemEl(s, withBadge) {
       '<div class="meta">' + badge + emptyTag +
         '<span>' + fmtTime(s.mtime) + '</span>' +
         '<span>' + fmtSize(s.size) + '</span>' +
-        '<span title="' + esc(s.cwd) + '">' + esc(shortCwd(s.cwd)) + '</span>' +
+        '<span title="' + escAttr(s.cwd) + '">' + esc(shortCwd(s.cwd)) + '</span>' +
       '</div>' +
     '</div>';
 
@@ -147,7 +147,7 @@ async function refreshAll(btn) {
       const still = state.sessions.find((s) => s.file === prev.file);
       if (still) await openSession(still);
       else {
-        state.active = null; state.msgs = null; state.msgPage = 0;
+        state.active = null; state.msgs = null;
         $("#main").innerHTML = '<div id="empty"><div class="empty-emoji">🗂️</div>' +
           "该会话已不存在（可能被外部删除）</div>";
         renderList();

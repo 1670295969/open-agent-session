@@ -229,8 +229,6 @@ async function sendEmbed() {
   const owner = state.active;
   setEmbedBusy(true);
   closeDD();
-  // 底部 pager 会挡住最新内容，先跳到最后一页
-  gotoMsgPage(Infinity);
   if (ta) ta.value = "";
 
   appendLiveMsg("user", text);

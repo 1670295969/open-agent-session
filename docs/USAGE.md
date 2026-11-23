@@ -45,8 +45,8 @@
 先跑一次纯手动模式确认能用（不需要装任何东西）：
 
 ```bash
-node agent-sessionary-server.js
-# Agent Sessionary: http://localhost:8347
+node opensession-server.js
+# OpenSession: http://localhost:8347
 ```
 
 确认页面能打开、会话列得出来，再按平台一键安装（服务常驻 + 开机自启 + 桌面图标）：
@@ -75,8 +75,8 @@ node agent-sessionary-server.js
 ./install-mac.sh --uninstall
 ```
 
-产物落在 `~/Library/LaunchAgents/com.agentsessionary.viewer.plist`、桌面与 `~/Applications` 的
-`会话馆.app`、日志 `~/Library/Logs/agent-sessionary/`。不写系统目录，不需要签名或公证。
+产物落在 `~/Library/LaunchAgents/com.opensession.viewer.plist`、桌面与 `~/Applications` 的
+`OpenSession.app`、日志 `~/Library/Logs/opensession/`。不写系统目录，不需要签名或公证。
 
 ### Windows
 
@@ -91,7 +91,7 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1   # 桌面快捷 + 开机
 ```
 
 不注册系统服务、不改 HKLM。常驻靠当前用户的启动文件夹，卸载就是删两个 `.lnk` 和一个
-`%USERPROFILE%\.agent-sessionary` 目录，也可以在「任务管理器 → 启动」里自己关掉。
+`%USERPROFILE%\.opensession` 目录，也可以在「任务管理器 → 启动」里自己关掉。
 
 > **重装提示**：升级 Node / 换机器后如果服务起不来，直接重跑一遍安装脚本即可——它是幂等的，
 > 会重新探测 Node 路径并修好服务配置。
@@ -102,25 +102,25 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1   # 桌面快捷 + 开机
 
 | 方式 | 入口 | 说明 |
 |---|---|---|
-| **桌面图标** | 双击「会话馆」 | 最快 |
+| **桌面图标** | 双击「OpenSession」 | 最快 |
 | **左侧导航栏 / Dock** | 点已固定的图标（仅 Linux） | 与桌面图标同一入口 |
-| 应用菜单 / 聚焦搜索 | 搜 "Agent Sessionary" 或 "会话馆" | |
-| 命令行（独立窗口） | `asry-open --app` | 1900×1150 无地址栏窗口，像个原生应用 |
-| 命令行（普通标签页） | `asry-open --tab` | 在你现有浏览器里开一页 |
-| 带筛选启动 | `asry-open --app --tool=claude` | 只显示 claude 会话 |
-| 带搜索启动 | `asry-open --app --q=关键词` | 预填搜索框 |
+| 应用菜单 / 聚焦搜索 | 搜 "OpenSession" | |
+| 命令行（独立窗口） | `opensession-open --app` | 1900×1150 无地址栏窗口，像个原生应用 |
+| 命令行（普通标签页） | `opensession-open --tab` | 在你现有浏览器里开一页 |
+| 带筛选启动 | `opensession-open --app --tool=claude` | 只显示 claude 会话 |
+| 带搜索启动 | `opensession-open --app --q=关键词` | 预填搜索框 |
 | 直接开浏览器 | 手动访问 `http://localhost:8347` | 服务得先起着 |
 
-`asry-open` 会先探活，服务没起就自己拉起来，不用手动起服务。
+`opensession-open` 会先探活，服务没起就自己拉起来，不用手动起服务。
 
 **改窗口尺寸：**
 
 ```bash
-ASRY_WIN_W=1600 ASRY_WIN_H=900 asry-open --app
+OPENSESSION_WIN_W=1600 OPENSESSION_WIN_H=900 opensession-open --app
 ```
 
 **为什么不建议从脚本 / CI 里拉起窗口**：那样启动的 GUI 进程往往没有真实的桌面会话
-（缺 `DISPLAY` / DBus），窗口不会出现。日常请点图标或 `asry-open`。
+（缺 `DISPLAY` / DBus），窗口不会出现。日常请点图标或 `opensession-open`。
 
 ---
 
@@ -129,20 +129,20 @@ ASRY_WIN_W=1600 ASRY_WIN_H=900 asry-open --app
 左右两栏，无多余装饰：
 
 ```
-┌─────────────────────┬────────────────────────────────────────────┐
-│ 📜 会话馆  ↻ │ 📁 工作目录      ● 嵌入会话中              │
-│ ＋ 新建会话          │ $ resume 命令                    [操作按钮行]│
-│ 搜索标题 / 项目路径… │ ───────────────────────────────────────────│
-│ Codex 50 · Claude 46 │ 👤 用户  2026-11-23 10:49                  │
-│ [全部][Codex][…] ☑多选│   你好，帮我看看这个报错                   │
-│ ─────────────────    │ 🤖 助手  2026-11-23 10:49                  │
-│ ▸ Codex  16 个       │   这是 Markdown 渲染后的正文…              │
-│   · 会话标题          │   ⚙ exec_command(...)                      │
-│     时间 大小 路径    │                                            │
-│   · 会话标题          │                                            │
-│ ─────────────────    │ ───────────────────────────────────────────│
-│ ← 第 1/6 页 · 共 128个│ [继续此会话…] 模型▾ 思考强度▾      [发送]  │
-└─────────────────────┴────────────────────────────────────────────┘
+┌───────────────────────────────┬───────────────────────────────────────────────┐
+│ 📜 OpenSession  ↻             │ 📁 工作目录    ● 嵌入会话中                   │
+│ ＋ 新建会话                   │ $ resume 命令         [操作按钮行]            │
+│ 搜索标题 / 项目路径…          │ ───────────────────────────────────────────── │
+│ Codex 50 · Claude 46 · Pi 9   │ 👤 用户   2026-11-23 10:49                    │
+│ [全部][Codex][…]  ☑ 多选      │    你好，帮我看看这个报错                     │
+│ ──────────                    │ 🤖 助手   2026-11-23 10:49                    │
+│ ▸ Codex   16 个               │    这是 Markdown 渲染后的正文…                │
+│   · 会话标题                  │    ⚙ exec_command(...)                        │
+│     时间  大小  路径          │                                               │
+│   · 会话标题                  │    正文全文渲染，不分页                       │
+│ ──────────                    │                                               │
+│ ← 第 1/6 页 · 共 128 个       │ ───────────────────────────────────────────── │
+└───────────────────────────────┴───────────────────────────────────────────────┘
 ```
 
 左侧是**会话列表**，右侧是**当前会话正文 + 操作栏**，底部输入栏在「页面内恢复」打开时出现。
@@ -195,8 +195,12 @@ $ codex resume --no-daemon 01a2...   ← 可以复制到终端跑的命令
 - 「全部」视图下，列表内**按工具分组**，每组带数量
 - 切到单一类型或输入了搜索词后，改为**平铺**并给每条加工具徽标
 
-**分页**：列表每页 25 条（底部 `← 第 x/y 页 · 共 n 个`），消息每页 100 条（正文上下各一个翻页器）。
-分页是统一的——分组视图下也按总条数翻页，不会出现每组各自翻页的混乱。
+**分页只作用于左侧列表**：每页 25 条（底部 `← 第 x/y 页 · 共 n 个`），分组视图下也按总条数翻页，
+不会出现每组各自翻页的混乱。
+
+**右侧正文不分页**，打开会话就一次性渲染全部消息。这样做的两个好处：
+找上下文时不用来回翻页，浏览器的 `Ctrl+F` 也能一次搜到整个会话的内容。
+实测最重的会话（155 条消息 / 57 万字）整篇渲染约 0.1 秒，无需担心卡顿。
 
 ---
 
@@ -326,7 +330,7 @@ $ codex resume --no-daemon 01a2...   ← 可以复制到终端跑的命令
 ```bash
 # Linux
 ./install.sh --uninstall          # 停服务 + 撤自启 + 去图标（脚本与数据都留着）
-systemctl --user disable --now asry   # 只关自启，不动图标
+systemctl --user disable --now opensession   # 只关自启，不动图标
 
 # macOS
 ./install-mac.sh --uninstall
@@ -338,39 +342,39 @@ systemctl --user disable --now asry   # 只关自启，不动图标
 临时停一下（不撤销安装）：
 
 ```bash
-systemctl --user stop asry      # Linux
-launchctl bootout gui/$(id -u)/com.agentsessionary.viewer   # macOS
-%USERPROFILE%\.agent-sessionary\stop.vbs    # Windows，双击即可
+systemctl --user stop opensession      # Linux
+launchctl bootout gui/$(id -u)/com.opensession.viewer   # macOS
+%USERPROFILE%\.opensession\stop.vbs    # Windows，双击即可
 ```
 
 ---
 
 ## 13. 参数与环境变量速查
 
-### 服务端（`node agent-sessionary-server.js`）
+### 服务端（`node opensession-server.js`）
 
 | 变量 | 默认 | 作用 |
 |---|---|---|
-| `ASRY_PORT` | `8347` | 监听端口（只绑 `127.0.0.1`，不对外） |
-| `ASRY_NO_BROWSER` | — | 设为 `1` 时不自动开浏览器。被开机自启拉起时应当设 |
-| `ASRY_HOME` | 安装时记录 | 项目目录。移动过项目目录、或想用多份副本时设它 |
-| `ASRY_NODE` | 自动探测 | 指定 node 可执行文件 |
-| `ASRY_MAC_TRASH` | — | macOS 设 `finder` 可改用 Finder 删除（换取「放回原处」，需要 Automation 权限） |
+| `OPENSESSION_PORT` | `8347` | 监听端口（只绑 `127.0.0.1`，不对外） |
+| `OPENSESSION_NO_BROWSER` | — | 设为 `1` 时不自动开浏览器。被开机自启拉起时应当设 |
+| `OPENSESSION_HOME` | 安装时记录 | 项目目录。移动过项目目录、或想用多份副本时设它 |
+| `OPENSESSION_NODE` | 自动探测 | 指定 node 可执行文件 |
+| `OPENSESSION_MAC_TRASH` | — | macOS 设 `finder` 可改用 Finder 删除（换取「放回原处」，需要 Automation 权限） |
 
-> **移动了项目目录怎么办**：`~/.local/bin` 下的 `asry-open` / `asry-service` 靠
-> `~/.config/agent-sessionary/appdir` 里记录的项目路径回找。换了位置就在新目录里重跑一次
-> `./install.sh`，它会更新这条记录；或者临时用 `ASRY_HOME=/新路径 asry-open`。
+> **移动了项目目录怎么办**：`~/.local/bin` 下的 `opensession-open` / `opensession-service` 靠
+> `~/.config/opensession/appdir` 里记录的项目路径回找。换了位置就在新目录里重跑一次
+> `./install.sh`，它会更新这条记录；或者临时用 `OPENSESSION_HOME=/新路径 opensession-open`。
 
-### 启动器（`asry-open`）
+### 启动器（`opensession-open`）
 
 | 参数 / 变量 | 作用 |
 |---|---|
 | `--app` / `--tab` | 独立窗口 / 普通标签页 |
 | `--tool=codex\|claude\|pi\|hermes` | 预置类型筛选 |
 | `--q=关键词` | 预置搜索 |
-| `ASRY_WIN_W` / `ASRY_WIN_H` | 独立窗口宽高，默认 1900×1150 |
-| `ASRY_PROFILE` | Chrome 用户数据目录，默认 `~/.cache/asry-chrome` |
-| `ASRY_BROWSER` | 指定浏览器可执行文件路径 |
+| `OPENSESSION_WIN_W` / `OPENSESSION_WIN_H` | 独立窗口宽高，默认 1900×1150 |
+| `OPENSESSION_PROFILE` | Chrome 用户数据目录，默认 `~/.cache/opensession-chrome` |
+| `OPENSESSION_BROWSER` | 指定浏览器可执行文件路径 |
 
 ### 快捷键
 
@@ -392,9 +396,9 @@ launchctl bootout gui/$(id -u)/com.agentsessionary.viewer   # macOS
 一个都没有说明你还没在那台机器上用过这些 CLI，不是程序的问题。有一个但没列出来，看服务日志：
 
 ```bash
-journalctl --user -u asry -f                    # Linux
-tail -f ~/Library/Logs/agent-sessionary/agent-sessionary.err.log   # macOS
-# Windows：直接看 `%USERPROFILE%\.agent-sessionary\` 下的日志，或前台手跑 node 看输出
+journalctl --user -u opensession -f                    # Linux
+tail -f ~/Library/Logs/opensession/opensession.err.log   # macOS
+# Windows：直接看 `%USERPROFILE%\.opensession\` 下的日志，或前台手跑 node 看输出
 ```
 
 **Q：点「页面内恢复」报「未找到命令」？**
@@ -427,29 +431,45 @@ tail -f ~/Library/Logs/agent-sessionary/agent-sessionary.err.log   # macOS
 
 ---
 
-## 附录：名称与命令对照
+## 附录：名称沿革与命令对照
 
-这个工具以前叫 `agenthist`，2026-11-23 改名为 **Agent Sessionary**（中文界面名「会话馆」）。
-如果你从旧版本升级过来，对应关系如下：
+这个工具在 2026-11-23 一天里改过两次名，最终定名 **OpenSession**：
 
-| 旧 | 新 |
-|---|---|
-| 命令 `agenthist-open` | `asry-open` |
-| 命令 `agenthist-service` | `asry-service` |
-| 服务 `agenthist.service` | `asry.service` |
-| 环境变量 `AGENTHIST_PORT` 等 | `ASRY_PORT` 等（全部 `AGENTHIST_` 前缀换成 `ASRY_`） |
-| 项目记录 `~/.config/agenthist/appdir` | `~/.config/agent-sessionary/appdir` |
-| Chrome 配置 `~/.cache/agenthist-chrome` | `~/.cache/asry-chrome` |
-| Windows 数据目录 `%USERPROFILE%\.agenthist` | `%USERPROFILE%\.agent-sessionary` |
-| macOS 日志 `~/Library/Logs/agenthist/` | `~/Library/Logs/agent-sessionary/` |
+| 阶段 | 英文名 | 命令 | 服务 |
+|---|---|---|---|
+| 最初 | `agenthist` | `agenthist-open` | `agenthist.service` |
+| 中间 | Agent Sessionary | `asry-open` | `asry.service` |
+| **当前** | **OpenSession** | **`opensession-open`** | **`opensession.service`** |
 
-旧版本留下的命令和 `~/.config/agenthist/` 不会自动删除。升级步骤：
+### 从任一旧版本升级
 
 ```bash
-./install.sh --uninstall          # 先撤掉旧服务（如果旧目录还在）
-./install.sh                      # 在新目录装一遍
-# 旧命令可手动清理：rm ~/.local/bin/agenthist ~/.local/bin/agenthist-open \
-#                    ~/.local/bin/agenthist-service ~/.local/bin/agenthist-web
+./install.sh --uninstall          # 先撤掉旧服务（在旧目录里执行）
+./install.sh                      # 在新目录里装一遍
 ```
 
+旧命令与旧配置**不会自动删除**。如需清理：
+
+```bash
+# agenthist 时代
+rm -f ~/.local/bin/agenthist ~/.local/bin/agenthist-open \
+      ~/.local/bin/agenthist-service ~/.local/bin/agenthist-web
+rm -rf ~/.config/agenthist ~/.cache/agenthist-chrome
+
+# Agent Sessionary 时代
+rm -f ~/.local/bin/asry-open ~/.local/bin/asry-service
+rm -rf ~/.config/agent-sessionary ~/.cache/asry-chrome
+```
+
+### 配置与环境变量对照
+
+| 项目 | agenthist | Agent Sessionary | OpenSession |
+|---|---|---|---|
+| 环境变量前缀 | `AGENTHIST_` | `ASRY_` | `OPENSESSION_` |
+| 项目位置记录 | `~/.config/agenthist/appdir` | `~/.config/agent-sessionary/appdir` | `~/.config/opensession/appdir` |
+| Chrome 配置 | `~/.cache/agenthist-chrome` | `~/.cache/asry-chrome` | `~/.cache/opensession-chrome` |
+| Windows 数据 | `%USERPROFILE%\.agenthist` | `%USERPROFILE%\.agent-sessionary` | `%USERPROFILE%\.opensession` |
+| macOS 日志 | `~/Library/Logs/agenthist/` | `~/Library/Logs/agent-sessionary/` | `~/Library/Logs/opensession/` |
+
 **会话数据不受影响** —— 这个工具从不搬动会话文件，改名只涉及它自己的命令、服务和配置。
+你的 Codex / Claude / Pi / Hermes 会话一条都不会丢。

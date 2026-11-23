@@ -7,7 +7,6 @@ const state = {
   active: null,      // 当前打开会话
   typeFilter: "all", // all | codex | claude | pi | hermes
   listPage: 0,       // 列表分页页码（统一全类分页）
-  msgPage: 0,        // 消息分页页码
   msgs: null,        // 当前会话消息
   embedBusy: false,
   embedOpen: false,
@@ -25,7 +24,7 @@ const state = {
 };
 
 const LIST_PAGE_SIZE = 25;
-const MSG_PAGE_SIZE = 100;
+// 正文不分页，没有消息分页尺寸
 
 const $ = (s) => document.querySelector(s);
 
@@ -42,6 +41,13 @@ function esc(s) {
   const d = document.createElement("div");
   d.textContent = s == null ? "" : String(s);
   return d.innerHTML;
+}
+
+// 属性值专用转义：esc() 走 textContent，只处理 & < >，**不转义引号**。
+// 直接拼进 title="..." / value="..." 时，值里一旦有 " 就会提前闭合属性，
+// 后面的内容被吞掉（表现为消息整条不显示）。属性里一律用 escAttr。
+function escAttr(s) {
+  return esc(s).replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
 function fmtTime(ms) {

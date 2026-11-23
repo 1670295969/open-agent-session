@@ -3,7 +3,6 @@
 
 async function openSession(s) {
   state.active = s;
-  state.msgPage = 0;
   renderList();
   const main = $("#main");
   main.innerHTML = '<div id="chat"><p style="color:var(--dim)">加载中…</p></div>';
@@ -22,21 +21,9 @@ async function openSession(s) {
   renderChat();
 }
 
-function msgPagerHtml(cls, totalPages) {
-  if (totalPages <= 1) return "";
-  const p = state.msgPage;
-  return '<div class="pager ' + cls + '">' +
-    '<button onclick="gotoMsgPage(' + (p - 1) + ')"' + (p <= 0 ? " disabled" : "") + '>← 上一页</button>' +
-    '<span>第 <span class="cur">' + (p + 1) + '</span> / ' + totalPages +
-      ' 页 · 共 ' + state.msgs.length + ' 条</span>' +
-    '<button onclick="gotoMsgPage(' + (p + 1) + ')"' +
-      (p >= totalPages - 1 ? " disabled" : "") + '>下一页 →</button>' +
-    '</div>';
-}
-
 function msgHtml(m) {
   const toolHtml = m.tool
-    ? '<div class="toolchip" title="' + esc(m.tool) + '">⚙ ' + esc(m.tool) + '</div>' : "";
+    ? '<div class="toolchip" title="' + escAttr(m.tool) + '">⚙ ' + esc(m.tool) + '</div>' : "";
   const sc = m.sidechain ? " sidechain" : "";
   const who = m.role === "user" ? "👤 用户" : "🤖 助手";
   const time = m.time ? esc(String(m.time).replace("T", " ").slice(0, 19)) : "";
@@ -53,11 +40,9 @@ function msgHtml(m) {
 function renderChat() {
   const s = state.active;
   const msgs = state.msgs || [];
-  const totalPages = Math.max(1, Math.ceil(msgs.length / MSG_PAGE_SIZE));
-  if (state.msgPage >= totalPages) state.msgPage = totalPages - 1;
-  if (state.msgPage < 0) state.msgPage = 0;
 
-  const slice = msgs.slice(state.msgPage * MSG_PAGE_SIZE, (state.msgPage + 1) * MSG_PAGE_SIZE);
+  // 正文不分页：一次性全部渲染。会话消息数最多几百条，直接铺完比翻页更好用
+  // （找上下文时不用来回翻页，Ctrl+F 浏览器内查找也能命中全部内容）。
   // 无正文时给出解释，别只留一片空白
   const emptyHint = msgs.length
     ? ""
@@ -69,8 +54,7 @@ function renderChat() {
         '· 会话刚创建就退出，或上下文压缩后原消息被清理<br><br>' +
         '可以点右上角「▶ 终端恢复会话」继续这个会话，或直接删除。' +
       '</div>';
-  const chat = '<div id="chat">' + msgPagerHtml("", totalPages) +
-    slice.map(msgHtml).join("") + emptyHint + msgPagerHtml("bottom", totalPages) + "</div>";
+  const chat = '<div id="chat">' + msgs.map(msgHtml).join("") + emptyHint + "</div>";
 
   const embedOn = state.embedOpen && isEmbeddable(s);
   const badge = isEmbeddable(s)
@@ -98,14 +82,6 @@ function renderChat() {
   }
 }
 
-function gotoMsgPage(p) {
-  const totalPages = Math.max(1, Math.ceil((state.msgs || []).length / MSG_PAGE_SIZE));
-  state.msgPage = Math.min(Math.max(0, p), totalPages - 1);
-  renderChat();
-  const chat = $("#chat");
-  if (chat) chat.scrollTop = 0;
-}
-
 function scrollChatBottom() {
   const chat = $("#chat");
   if (chat) chat.scrollTop = chat.scrollHeight;
@@ -119,18 +95,16 @@ function toggleMd(btn) {
   scrollChatTop();
 }
 
-// ---- 刷新当前会话（重读文件，保留所在页） ----
+// ---- 刷新当前会话（重读文件） ----
 async function reloadActive(btn) {
   const s = state.active;
   if (!s) return;
   if (btn) { btn.classList.add("spin"); btn.disabled = true; }
-  const keepPage = state.msgPage;
   try {
     const url = "/api/session?file=" + encodeURIComponent(s.file) + "&tool=" + s.tool + "&t=" + Date.now();
     const msgs = await (await fetch(url)).json();
     if (!Array.isArray(msgs)) throw new Error(msgs && msgs.error || "解析失败");
     state.msgs = msgs;
-    state.msgPage = Math.min(keepPage, Math.max(0, Math.ceil(msgs.length / MSG_PAGE_SIZE) - 1));
     renderChat();
     scrollChatTop();
     toast("已刷新 · " + msgs.length + " 条消息");

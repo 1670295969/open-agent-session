@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""生成 agent-sessionary 图标（PNG + 多尺寸 ICO + macOS ICNS）
+"""生成 opensession 图标（PNG + 多尺寸 ICO + macOS ICNS）
 
 为什么不直接塞 SVG：
   Windows 快捷方式的 IconLocation 只认 .ico/.exe/.dll；
@@ -10,9 +10,9 @@
 用法：
     python tools/make-icon.py
 输出：
-    assets/agent-sessionary.ico      多尺寸（16/24/32/48/64/128/256）
-    assets/agent-sessionary.icns     macOS 图标（含 1024，Retina 大图标靠它）
-    assets/agent-sessionary-256.png  用于文档与 README
+    assets/opensession.ico      多尺寸（16/24/32/48/64/128/256）
+    assets/opensession.icns     macOS 图标（含 1024，Retina 大图标靠它）
+    assets/opensession-256.png  用于文档与 README
 """
 import io
 import os
@@ -160,13 +160,13 @@ def main():
     os.makedirs(OUT_DIR, exist_ok=True)
     cache = {s: render(s) for s in SIZES}
 
-    ico = os.path.join(OUT_DIR, "agent-sessionary.ico")
+    ico = os.path.join(OUT_DIR, "opensession.ico")
     # 最大尺寸作主图，其余进多尺寸序列
     cache[256].save(ico, format="ICO", sizes=[(s, s) for s in SIZES])
-    png = os.path.join(OUT_DIR, "agent-sessionary-256.png")
+    png = os.path.join(OUT_DIR, "opensession-256.png")
     cache[256].save(png, format="PNG")
 
-    icns = os.path.join(OUT_DIR, "agent-sessionary.icns")
+    icns = os.path.join(OUT_DIR, "opensession.icns")
     write_icns(icns, cache)
     found = verify_icns(icns)
 

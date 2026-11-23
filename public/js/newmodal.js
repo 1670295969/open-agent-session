@@ -46,7 +46,7 @@ function fillCwdDatalist() {
     .map((s) => s.cwd)
     .filter((c) => c && !seen.has(c.toLowerCase()) && seen.add(c.toLowerCase()))
     .slice(0, 30)
-    .map((c) => '<option value="' + esc(c) + '">')
+    .map((c) => '<option value="' + escAttr(c) + '">')
     .join("");
 }
 

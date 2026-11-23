@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-agent-sessionary —— 统一查看 / 搜索 / 恢复 claude code / codex / pi 三个 CLI 的历史会话
+opensession —— 统一查看 / 搜索 / 恢复 claude code / codex / pi 三个 CLI 的历史会话
 
 支持的会话存储（2026-11 实测格式）:
   claude  ~/.claude/projects/<encoded-cwd>/<uuid>.jsonl
@@ -453,7 +453,7 @@ def cmd_tui(args):
                     print(f"{_loc(m.ts)[6:]:>11} "
                           f"{c('1;36','用户') if m.role=='user' else c('1;32','助手')}: "
                           f"{(m.text or m.tool)[:100]}")
-                print(c("2", f"… 共 {len(msgs)} 条。完整查看: agent-sessionary show {ses.id[:8]}"))
+                print(c("2", f"… 共 {len(msgs)} 条。完整查看: opensession show {ses.id[:8]}"))
                 print(c("2", "按回车返回选择器"))
                 input()
                 tty.setraw(fd.fileno())
@@ -462,7 +462,7 @@ def cmd_tui(args):
 
 # ---------------------------------------------------------------- main
 def main():
-    ap = argparse.ArgumentParser(prog="agent-sessionary",
+    ap = argparse.ArgumentParser(prog="opensession",
         description="claude code / codex / pi 历史会话统一查看与恢复")
     sub = ap.add_subparsers(dest="cmd")
     p = sub.add_parser("list", help="列出会话")

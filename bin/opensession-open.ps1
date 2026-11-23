@@ -1,12 +1,12 @@
-# asry-open —— 命令行打开 Agent Sessionary（Windows 版，对应 Linux 的 bin/asry-open）
+# opensession-open —— 命令行打开 OpenSession（Windows 版，对应 Linux 的 bin/opensession-open）
 #
 # 用法：
-#   .\asry-open.ps1                  独立无地址栏窗口（默认）
-#   .\asry-open.ps1 -Tab             退回普通浏览器标签页
-#   .\asry-open.ps1 -Tool claude     只打开 claude 的会话
-#   .\asry-open.ps1 -Q 关键词         打开并预先搜索
-#   .\asry-open.ps1 -Stop            停止后端
-#   .\asry-open.ps1 -Status          查看状态
+#   .\opensession-open.ps1                  独立无地址栏窗口（默认）
+#   .\opensession-open.ps1 -Tab             退回普通浏览器标签页
+#   .\opensession-open.ps1 -Tool claude     只打开 claude 的会话
+#   .\opensession-open.ps1 -Q 关键词         打开并预先搜索
+#   .\opensession-open.ps1 -Stop            停止后端
+#   .\opensession-open.ps1 -Status          查看状态
 #
 # 与 Linux 版的差异：Linux 用 bash + unshare + systemd；这里用 VBS 隐藏窗口起 node，
 # 因为 Node 服务必须无控制台常驻，而 .lnk / 双击都会带一个黑窗。
@@ -24,7 +24,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $AppDir  = Split-Path -Parent $MyInvocation.MyCommand.Definition
-$DataDir = Join-Path $env:USERPROFILE '.agent-sessionary'
+$DataDir = Join-Path $env:USERPROFILE '.opensession'
 $RunVbs  = Join-Path $DataDir 'launch.vbs'
 $StopVbs = Join-Path $DataDir 'stop.vbs'
 
@@ -86,14 +86,14 @@ if ($qs.Count) { $url += "?" + ($qs -join "&") }
 
 # ---------- 服务探活，不活就拉起 ----------
 if (-not (Test-Server)) {
-    Write-Host "Agent Sessionary 未运行，正在启动…"
+    Write-Host "OpenSession 未运行，正在启动…"
     if (Test-Path -LiteralPath $RunVbs) {
         # install.ps1 生成的启动器：隐藏窗口起 node → 等就绪 → 开窗口。
         # 但它开的是固定 URL，带筛选时需要自己再开一次，所以这里不直接调用，
         # 只借它把服务拉起来。
         $node = Find-Node
         if ($node) {
-            $js = Join-Path $AppDir 'agent-sessionary-server.js'
+            $js = Join-Path $AppDir 'opensession-server.js'
             if (Test-Path -LiteralPath $js) {
                 Start-Process -FilePath $node -ArgumentList @($js) -WorkingDirectory $AppDir `
                     -WindowStyle Hidden
@@ -102,7 +102,7 @@ if (-not (Test-Server)) {
     } else {
         $node = Find-Node
         if (-not $node) { throw "未找到 node.exe，请先安装 Node.js 18+" }
-        Start-Process -FilePath $node -ArgumentList @((Join-Path $AppDir 'agent-sessionary-server.js')) `
+        Start-Process -FilePath $node -ArgumentList @((Join-Path $AppDir 'opensession-server.js')) `
             -WorkingDirectory $AppDir -WindowStyle Hidden
     }
     $deadline = (Get-Date).AddSeconds(20)
@@ -113,13 +113,13 @@ if (-not (Test-Server)) {
     if (-not (Test-Server)) { throw "服务未在 20 秒内就绪：$url" }
 }
 
-Write-Host "Agent Sessionary: $url"
+Write-Host "OpenSession: $url"
 
 # ---------- 开窗口 ----------
 $browser = Find-Browser
 if (-not $Tab -and $browser) {
     # --app 独立窗口（无地址栏）；独立 user-data-dir 避免被已运行的实例吞掉
-    $profile = Join-Path $env:LOCALAPPDATA 'asry-chrome'
+    $profile = Join-Path $env:LOCALAPPDATA 'opensession-chrome'
     New-Item -ItemType Directory -Force -Path $profile | Out-Null
     Start-Process -FilePath $browser -ArgumentList @(
         "--user-data-dir=$profile",

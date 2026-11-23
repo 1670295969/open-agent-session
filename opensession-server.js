@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Agent Sessionary — 聚合查看/恢复 Codex CLI、Claude Code、Pi、Hermes 的历史会话
-// 用法: node agent-sessionary-server.js  然后浏览器打开 http://localhost:8347
+// OpenSession — 聚合查看/恢复 Codex CLI、Claude Code、Pi、Hermes 的历史会话
+// 用法: node opensession-server.js  然后浏览器打开 http://localhost:8347
 //
 // 代码结构：
 //   lib/config.js           常量与路径
@@ -23,13 +23,13 @@ const { openUrl } = require("./lib/platform");
 const server = http.createServer(handle);
 
 // 尝试自动打开浏览器（平台差异收在 platform.openUrl 里）
-// ASRY_NO_BROWSER=1 时不弹窗——被 systemd / 启动项常驻拉起时用，用户自己点图标打开
+// OPENSESSION_NO_BROWSER=1 时不弹窗——被 systemd / 启动项常驻拉起时用，用户自己点图标打开
 function openBrowser() {
-  if (process.env.ASRY_NO_BROWSER === "1") return;
+  if (process.env.OPENSESSION_NO_BROWSER === "1") return;
   openUrl(`http://localhost:${PORT}`);
 }
 
 server.listen(PORT, "127.0.0.1", () => {
-  console.log(`Agent Sessionary: http://localhost:${PORT}`);
+  console.log(`OpenSession: http://localhost:${PORT}`);
   openBrowser();
 });

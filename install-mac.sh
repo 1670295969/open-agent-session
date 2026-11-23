@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install-mac.sh —— 一键安装 / 修复 Agent Sessionary 的开机自启与桌面图标（macOS）
+# install-mac.sh —— 一键安装 / 修复 OpenSession 的开机自启与桌面图标（macOS）
 #
 # 用法：
 #   ./install-mac.sh              安装或修复（幂等，可重复跑）
@@ -30,18 +30,18 @@ fi
 
 SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
 APP_DIR="$SELF_DIR"
-SERVER_JS="$APP_DIR/agent-sessionary-server.js"
+SERVER_JS="$APP_DIR/opensession-server.js"
 
-APP_NAME="Agent Sessionary"
-BUNDLE_ID="com.agentsessionary.viewer"
-LABEL="com.agentsessionary.viewer"
+APP_NAME="OpenSession"
+BUNDLE_ID="com.opensession.viewer"
+LABEL="com.opensession.viewer"
 
 LA_DIR="$HOME/Library/LaunchAgents"
 PLIST="$LA_DIR/$LABEL.plist"
-LOG_DIR="$HOME/Library/Logs/agent-sessionary"
+LOG_DIR="$HOME/Library/Logs/opensession"
 APP_BUNDLE="$HOME/Applications/$APP_NAME.app"
 DESKTOP_LINK="$HOME/Desktop/$APP_NAME.app"
-ICNS="$APP_DIR/assets/agent-sessionary.icns"
+ICNS="$APP_DIR/assets/opensession.icns"
 
 MODE="install"
 case "${1:-}" in
@@ -61,8 +61,8 @@ warn() { printf '    ! %s\n' "$*"; }
 # 写死会在下次登录时静默失效。这里在安装时解析一次写进 plist，
 # 并在 wrapper 里做二次兜底（见下），两边都改版本也能自愈。
 pick_node() {
-  if [ -n "${ASRY_NODE:-}" ] && [ -x "${ASRY_NODE}" ]; then
-    printf '%s' "${ASRY_NODE}"; return 0
+  if [ -n "${OPENSESSION_NODE:-}" ] && [ -x "${OPENSESSION_NODE}" ]; then
+    printf '%s' "${OPENSESSION_NODE}"; return 0
   fi
   # WorkBuddy 自带的 node 优先（与 Linux 侧一致），其次常见安装位置
   local known
@@ -83,11 +83,11 @@ pick_node() {
 # ---------- 写服务 wrapper ----------
 # launchd 的 ProgramArguments 只能是一个命令，而我们需要「补 PATH → 找 node → exec」，
 # 所以落一个小 shell 脚本，plist 只负责调它。这样 plist 保持静态、逻辑可改。
-SERVICE_SH="$APP_DIR/bin/asry-service-mac"
+SERVICE_SH="$APP_DIR/bin/opensession-service-mac"
 write_service() {
   cat > "$SERVICE_SH" << EOF
 #!/bin/bash
-# asry-service-mac —— 由 install-mac.sh 生成，可随时重跑安装脚本覆盖
+# opensession-service-mac —— 由 install-mac.sh 生成，可随时重跑安装脚本覆盖
 #
 # 为什么需要这一层：
 #   1. launchd 给的环境极度贫瘠（PATH 仅 /usr/bin:/bin:/usr/sbin:/sbin），
@@ -97,9 +97,9 @@ write_service() {
 set -uo pipefail
 
 APP_DIR="$APP_DIR"
-ENTRY="\$APP_DIR/agent-sessionary-server.js"
+ENTRY="\$APP_DIR/opensession-server.js"
 
-log() { printf '[asry-service-mac] %s\n' "\$*" >&2; }
+log() { printf '[opensession-service-mac] %s\n' "\$*" >&2; }
 [ -f "\$ENTRY" ] || { log "找不到服务入口: \$ENTRY"; exit 78; }
 
 for d in /opt/homebrew/bin /usr/local/bin "\$HOME/.local/bin" "\$HOME/.npm-global/bin" \\
@@ -123,8 +123,8 @@ log "node: \$NODE_BIN"
 log "PATH: \$PATH"
 
 # 被 launchd 拉起时不要自动弹浏览器：用户自己点图标打开
-export ASRY_NO_BROWSER="\${ASRY_NO_BROWSER:-1}"
-export ASRY_PORT="\${ASRY_PORT:-8347}"
+export OPENSESSION_NO_BROWSER="\${OPENSESSION_NO_BROWSER:-1}"
+export OPENSESSION_PORT="\${OPENSESSION_PORT:-8347}"
 
 cd "\$APP_DIR" || exit 78
 exec "\$NODE_BIN" "\$ENTRY"
@@ -172,15 +172,15 @@ write_plist() {
     <string>$APP_DIR</string>
 
     <key>StandardOutPath</key>
-    <string>$LOG_DIR/agent-sessionary.out.log</string>
+    <string>$LOG_DIR/opensession.out.log</string>
     <key>StandardErrorPath</key>
-    <string>$LOG_DIR/agent-sessionary.err.log</string>
+    <string>$LOG_DIR/opensession.err.log</string>
 
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
         <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
-        <key>ASRY_NO_BROWSER</key>
+        <key>OPENSESSION_NO_BROWSER</key>
         <string>1</string>
     </dict>
 </dict>
@@ -203,7 +203,7 @@ write_app() {
   /bin/rm -rf "$bundle" 2>/dev/null || true
   mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Resources"
 
-  cp "$ICNS" "$bundle/Contents/Resources/agent-sessionary.icns"
+  cp "$ICNS" "$bundle/Contents/Resources/opensession.icns"
 
   cat > "$bundle/Contents/Info.plist" << EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -211,13 +211,13 @@ write_app() {
 <plist version="1.0">
 <dict>
     <key>CFBundleName</key>            <string>$APP_NAME</string>
-    <key>CFBundleDisplayName</key>     <string>会话馆</string>
+    <key>CFBundleDisplayName</key>     <string>OpenSession</string>
     <key>CFBundleIdentifier</key>      <string>$BUNDLE_ID</string>
     <key>CFBundleVersion</key>         <string>1.0</string>
     <key>CFBundleShortVersionString</key><string>1.0</string>
     <key>CFBundlePackageType</key>     <string>APPL</string>
     <key>CFBundleExecutable</key>      <string>launch</string>
-    <key>CFBundleIconFile</key>        <string>agent-sessionary</string>
+    <key>CFBundleIconFile</key>        <string>opensession</string>
     <key>LSMinimumSystemVersion</key>  <string>10.13</string>
     <!-- 启动器本身只活一两秒，不该在 Dock 里留一个占位图标 -->
     <key>LSUIElement</key>             <true/>
@@ -229,14 +229,14 @@ EOF
 
   cat > "$bundle/Contents/MacOS/launch" << EOF
 #!/bin/bash
-# Agent Sessionary 启动器（由 install-mac.sh 生成）
+# OpenSession 启动器（由 install-mac.sh 生成）
 #
 # 职责：探活 → 不活就请 launchd 拉起（拿不到 launchd 就直接起进程）→ 等就绪 → 开浏览器窗口。
 # 为什么不直接 exec node：那样每次双击都起第二个实例（端口冲突），
 # 而且关掉浏览器后 node 变孤儿进程，用户看不到、也停不掉。
 set -uo pipefail
 
-PORT="\${ASRY_PORT:-8347}"
+PORT="\${OPENSESSION_PORT:-8347}"
 BASE="http://127.0.0.1:\$PORT"
 LABEL="$LABEL"
 SERVER_JS="$SERVER_JS"
@@ -249,14 +249,14 @@ if ! alive; then
   launchctl kickstart -k "gui/\$(id -u)/\$LABEL" >/dev/null 2>&1 || true
   if ! alive; then
     PATH="/opt/homebrew/bin:/usr/local/bin:\$PATH"
-    [ -x /bin/bash ] && nohup /bin/bash "$APP_DIR/bin/asry-service-mac" \\
+    [ -x /bin/bash ] && nohup /bin/bash "$APP_DIR/bin/opensession-service-mac" \\
       >/dev/null 2>&1 &
   fi
   for _ in \$(seq 1 40); do alive && break; sleep 0.25; done
 fi
 
 if ! alive; then
-  osascript -e 'display alert "Agent Sessionary 启动失败" message "后端无响应，请查看 ~/Library/Logs/agent-sessionary/agent-sessionary.err.log"' >/dev/null 2>&1 || true
+  osascript -e 'display alert "OpenSession 启动失败" message "后端无响应，请查看 ~/Library/Logs/opensession/opensession.err.log"' >/dev/null 2>&1 || true
   exit 1
 fi
 
@@ -272,7 +272,7 @@ done
 URL="\$BASE/"
 if [ -n "\$CHROME" ]; then
   "\$CHROME" --app="\$URL" --window-size=1600,1000 --no-first-run \\
-    --no-default-browser-check --user-data-dir="\$HOME/.cache/asry-chrome" \\
+    --no-default-browser-check --user-data-dir="\$HOME/.cache/opensession-chrome" \\
     >/dev/null 2>&1 &
 else
   open "\$URL"
@@ -296,7 +296,7 @@ port_alive() {
 # ============================ 动作 ============================
 
 do_status() {
-  step "Agent Sessionary 状态（macOS）"
+  step "OpenSession 状态（macOS）"
 
   if loaded; then ok "LaunchAgent 已加载：$LABEL"; else warn "LaunchAgent 未加载"; fi
   if port_alive; then ok "服务在跑：http://127.0.0.1:8347"; else warn "服务无响应"; fi
@@ -304,20 +304,20 @@ do_status() {
   [ -f "$SERVICE_SH" ]&& ok "wrapper: $SERVICE_SH" || warn "wrapper 不存在"
   [ -d "$APP_BUNDLE" ]&& ok "应用包: $APP_BUNDLE"  || warn "应用包不存在"
   [ -d "$DESKTOP_LINK" ] && ok "桌面图标：已创建"  || warn "桌面图标不存在"
-  [ -f "$ICNS" ]      && ok "图标: agent-sessionary.icns" || warn "图标不存在（先跑 tools/make-icon.py）"
+  [ -f "$ICNS" ]      && ok "图标: opensession.icns" || warn "图标不存在（先跑 tools/make-icon.py）"
 
   step "node 与 PATH"
   printf '    node: %s\n' "$(pick_node || echo '未找到')"
-  printf '    日志: %s\n' "$LOG_DIR/agent-sessionary.err.log"
+  printf '    日志: %s\n' "$LOG_DIR/opensession.err.log"
 
   step "常用命令"
   say "    重启服务：launchctl kickstart -k gui/$(id -u)/$LABEL"
-  say "    看日志：  tail -f ~/Library/Logs/agent-sessionary/agent-sessionary.err.log"
+  say "    看日志：  tail -f ~/Library/Logs/opensession/opensession.err.log"
   say "    停服务：  launchctl bootout gui/$(id -u)/$LABEL"
 }
 
 do_install() {
-  step "Agent Sessionary 安装（macOS）"
+  step "OpenSession 安装（macOS）"
 
   if [ ! -f "$SERVER_JS" ]; then
     echo "找不到 $SERVER_JS，请在项目目录内运行本脚本" >&2
@@ -328,7 +328,7 @@ do_install() {
   ok "node: $NODE_BIN"
 
   if [ ! -f "$ICNS" ]; then
-    warn "缺少 assets/agent-sessionary.icns，尝试生成…"
+    warn "缺少 assets/opensession.icns，尝试生成…"
     if command -v python3 >/dev/null 2>&1; then
       python3 "$APP_DIR/tools/make-icon.py" >/dev/null 2>&1 || warn "图标生成失败，将使用系统默认图标"
     fi
@@ -358,7 +358,7 @@ do_install() {
 
   say "4) 等后端就绪"
   for _ in $(seq 1 40); do port_alive && break; sleep 0.25; done
-  if port_alive; then ok "http://127.0.0.1:8347 已响应"; else warn "尚未响应，请查看 $LOG_DIR/agent-sessionary.err.log"; fi
+  if port_alive; then ok "http://127.0.0.1:8347 已响应"; else warn "尚未响应，请查看 $LOG_DIR/opensession.err.log"; fi
 
   say "5) 生成应用包与桌面图标"
   write_app "$APP_BUNDLE"
@@ -368,12 +368,12 @@ do_install() {
   ok "$DESKTOP_LINK"
 
   say ""
-  say "完成。双击桌面上的「会话馆」即可打开；已设为登录自启。"
+  say "完成。双击桌面上的「OpenSession」即可打开；已设为登录自启。"
   say "查看状态：./install-mac.sh --status"
 }
 
 do_uninstall() {
-  step "Agent Sessionary 卸载（macOS）"
+  step "OpenSession 卸载（macOS）"
 
   launchctl bootout "gui/$(id -u)/$LABEL" >/dev/null 2>&1 || true
   launchctl disable "gui/$(id -u)/$LABEL" >/dev/null 2>&1 || true
