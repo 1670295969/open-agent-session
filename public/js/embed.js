@@ -108,7 +108,7 @@ function toggleEmbed(btn) {
   const ib = document.getElementById("inputbar");
   const badge = document.getElementById("livebadge");
   if (ib) ib.classList.toggle("show", state.embedOpen);
-  if (badge) badge.style.display = state.embedOpen ? "inline-block" : "none";
+  if (badge) badge.style.display = state.embedOpen ? "inline-flex" : "none";
   if (btn) btn.textContent = state.embedOpen ? "✕ 关闭页面内会话" : "💻 页面内恢复";
   if (state.embedOpen) {
     fillEmbedSelectors();
@@ -129,13 +129,19 @@ function bindEmbedInput() {
 }
 
 // ---- 流式消息 ----
+/* 实时消息的骨架必须和 chat.js 的 msgHtml 完全一致（.who > .dot/.role/.time，
+   正文是 .msg > .bubble）。结构一旦不同，跑完刷新成历史渲染时会跳一下。 */
 function appendLiveMsg(role, text, cls) {
-  let chat = document.getElementById("chat");
+  const chat = document.getElementById("chat");
   if (!chat) return null;
   const div = document.createElement("div");
   div.className = "msg " + role + (cls ? " " + cls : "") + " live";
-  div.innerHTML = '<div class="who">' + (role === "user" ? "👤 用户" : "🤖 助手") +
-    ' <span style="opacity:.6">· 页面内</span></div><div class="bubble raw"></div>';
+  const now = new Date();
+  const hhmm = String(now.getHours()).padStart(2, "0") + ":" +
+    String(now.getMinutes()).padStart(2, "0");
+  div.innerHTML = '<div class="who"><i class="dot"></i><b class="role">' +
+    (role === "user" ? "用户" : "助手") + '</b><span class="time">' + hhmm +
+    '</span><span class="tag">页面内</span></div><div class="bubble raw"></div>';
   const bubble = div.querySelector(".bubble");
   bubble.textContent = text;
   chat.appendChild(div);
@@ -358,9 +364,9 @@ function appendNewChat(draft) {
   renderList();
   const bar = '<div id="bar"><div class="info">' +
       '<div class="cwd">📁 ' + esc(draft.cwd) +
-        '<span id="livebadge" style="display:inline-block">● 新建会话中</span></div>' +
+        '<span id="livebadge" style="display:inline-flex">新建会话中</span></div>' +
       '<div class="cmd">' + esc("页面内新建 · " + (draft.tool || "")) +
-      ' · 首条消息跑完后自动切换</div></div></div>';
+      " · 首条消息跑完后自动切换</div></div></div>";
   $("#main").innerHTML = bar + '<div id="chat"></div>';
   appendLiveMsg("user", draft.message);
 }

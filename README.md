@@ -416,9 +416,16 @@ zstd -dc f                                     // 143768 B → 718562 B（正确
 | hermes | `message.reasoning_content` | 推理模型才有 |
 | codex | `payload.reasoning.summary[].text` | `content` 是加密的（`encrypted_content`），实测 2160 条 reasoning 里 0 条可读 content；`summary` 只有要点，中位数 35 字 |
 | dsh | `message.content[].type === "reasoning"` → `.text` | 明文完整。**2026-11-23 更正**：早前记为「dsh 没有」是错的，那次只抽查了没开思考强度的会话 |
+| claude（旧版） | 正文里的 `<think>…</think>` 标签 | 早期 CLI 把思考直接写进 text 块，新版本不再这样写，但老会话不会重写。见下方第 0 条 |
 
-三个实现点：
+四个实现点：
 
+0. **内联 `<think>` 标签要先剥**（`stripInlineThink`）。不剥的话页面上会直接显示
+   `<think>` 字样，那一大段英文推理被当成正文，把真正的回答挤到下面。
+   🔴 **标签会跨消息**：实测 58 条含标签的消息里只有 8 条成对闭合，其余是
+   「这条结尾开、下一条才关」，所以状态必须跨消息携带（`state.inThink`），
+   不能逐条独立判定。也有孤立 `</think>` 自成一条消息的情况，直接丢弃整条。
+   标签名有 `<think>` / `<thinking>` 两种写法。
 1. **纯思考消息要合并**。claude / pi 常把「只想不答」的 assistant 写成独立一行
    （实测 claude 1436 条含 thinking 的消息里有 871 条没有 text 也没有 tool）。
    直接铺开就是一堆空壳卡片，所以 `mergeThink()` 把它们攒起来并到**后面第一条**

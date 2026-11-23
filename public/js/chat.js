@@ -39,21 +39,46 @@ function thinkHtml(t) {
     "</details>";
 }
 
-function msgHtml(m) {
+/* 消息时间戳：同一天只显示 HH:MM，跨天补上 MM-DD。
+   ⚠️ 不能叫 fmtTime —— state.js 已有同名函数（吃毫秒时间戳，列表在用），
+   重名会把它整个覆盖掉，左侧列表的时间全变成一串数字。 */
+function fmtMsgTime(t) {
+  if (!t) return "";
+  const s = String(t).replace("T", " ");
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})[ ](\d{2}):(\d{2})/);
+  if (!m) return s.slice(0, 16);
+  const now = new Date();
+  const today = +m[1] === now.getFullYear() &&
+    +m[2] === now.getMonth() + 1 && +m[3] === now.getDate();
+  return (today ? "" : m[2] + "-" + m[3] + " ") + m[4] + ":" + m[5];
+}
+
+/* cont = 上一条也是助手，属于同一轮里的后续动作。
+   助手一次回答常被拆成「一句话 + 一串工具调用」（实测某会话连续 5 条），
+   每条都重印「助手 18:02:18」会糊成一片。cont 的消息不画角色行，
+   只在组首标一次时间，读起来才像「一次回答里的几个步骤」。 */
+function msgHtml(m, cont, end) {
   const toolHtml = m.tool
-    ? '<div class="toolchip" title="' + escAttr(m.tool) + '">⚙ ' + esc(m.tool) + '</div>' : "";
+    ? '<div class="toolchip" title="' + escAttr(m.tool) + '">⚙ ' + esc(m.tool) + "</div>" : "";
   const sc = m.sidechain ? " sidechain" : "";
-  const who = m.role === "user" ? "👤 用户" : "🤖 助手";
-  const time = m.time ? esc(String(m.time).replace("T", " ").slice(0, 19)) : "";
+  const role = m.role === "user" ? "用户" : "助手";
+  const rawTime = m.time ? String(m.time).replace("T", " ") : "";
+  const time = fmtMsgTime(m.time);
+  const timeHtml = time
+    ? '<span class="time" title="' + escAttr(rawTime) + '">' + esc(time) + "</span>" : "";
+  const sideHtml = m.sidechain ? '<span class="tag">sidechain</span>' : "";
   // 正文走 Markdown 渲染（md.js），已是安全 HTML，不再 esc
   const body = m.text
     ? (state.mdOff ? '<div class="raw">' + esc(m.text) + "</div>" : mdToHtml(m.text))
     : "";
-  return '<div class="msg ' + m.role + sc + '">' +
-      '<div class="who">' + who + ' ' + time + (m.sidechain ? " · sidechain" : "") + '</div>' +
-      thinkHtml(m.think) +
-      (body ? '<div class="bubble md">' + body + '</div>' : "") + toolHtml +
-    '</div>';
+  const who = cont ? "" :
+    '<div class="who"><i class="dot"></i><b class="role">' + role + "</b>" +
+      timeHtml + sideHtml + "</div>";
+  const cls = "msg " + m.role + sc + (cont ? " cont" : "") + (end ? " end" : "");
+  return '<div class="' + cls + '">' +
+      who + thinkHtml(m.think) +
+      (body ? '<div class="bubble md">' + body + "</div>" : "") + toolHtml +
+    "</div>";
 }
 
 function renderChat() {
@@ -73,11 +98,20 @@ function renderChat() {
         '· 会话刚创建就退出，或上下文压缩后原消息被清理<br><br>' +
         '可以点右上角「▶ 终端恢复会话」继续这个会话，或直接删除。' +
       '</div>';
-  const chat = '<div id="chat">' + msgs.map(msgHtml).join("") + emptyHint + "</div>";
+  // 连续助手消息归成一组：组内不重复画角色行，只在组首标一次。
+  // 用户消息永远独立成块（问题本身就是一块，不跟上一轮混）。
+  const html = msgs.map((m, i) => {
+    const prev = msgs[i - 1], next = msgs[i + 1];
+    const cont = !!prev && m.role === "assistant" && prev.role === "assistant";
+    // 组尾：下一条不是助手了，这条才拿回正常的大间距，把轮次分开
+    const end = !next || next.role !== "assistant" || !!next.sidechain;
+    return msgHtml(m, cont, end);
+  }).join("");
+  const chat = '<div id="chat">' + html + emptyHint + "</div>";
 
   const embedOn = state.embedOpen && isEmbeddable(s);
   const badge = isEmbeddable(s)
-    ? '<span id="livebadge" style="display:' + (embedOn ? "inline-block" : "none") + '">● 嵌入会话中</span>'
+    ? '<span id="livebadge" style="display:' + (embedOn ? "inline-flex" : "none") + '">嵌入会话中</span>'
     : "";
   const bar = '<div id="bar"><div class="info">' +
       '<div class="cwd">📁 ' + esc(s.cwd || "(未知目录)") + badge + '</div>' +
