@@ -192,25 +192,16 @@ do_install() {
   done
 
   # --- 1) 图标 ---
-  cat > "$ICON" <<'SVG'
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#3d5afe"/>
-      <stop offset="1" stop-color="#7c4dff"/>
-    </linearGradient>
-  </defs>
-  <rect x="3" y="6" width="58" height="46" rx="7" fill="url(#g)"/>
-  <rect x="11" y="15" width="26" height="3.4" rx="1.7" fill="#fff" opacity=".95"/>
-  <rect x="11" y="23" width="40" height="3.4" rx="1.7" fill="#fff" opacity=".8"/>
-  <rect x="11" y="31" width="33" height="3.4" rx="1.7" fill="#fff" opacity=".65"/>
-  <rect x="11" y="39" width="20" height="3.4" rx="1.7" fill="#fff" opacity=".5"/>
-  <path d="M20 52h24l-4 7H24z" fill="#2a36b1"/>
-  <circle cx="52" cy="50" r="10" fill="#00c853" stroke="#fff" stroke-width="2.5"/>
-  <path d="M47.5 50.2l3.2 3.2 6-6.4" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-</svg>
-SVG
-  echo "✓ 图标 $ICON"
+  # 直接复制项目里的 public/favicon.svg，不再内嵌一份。
+  # 原先这里手写了一份 SVG，与 favicon.svg、tools/make-icon.py 三处几何各写一遍，
+  # 改图标时极容易漏同步（2026-11-23 换图标时就踩到了）。
+  # 现在唯一来源是 public/favicon.svg，另外两处都从它派生。
+  if [ -f "$APP_DIR/public/favicon.svg" ]; then
+    cp "$APP_DIR/public/favicon.svg" "$ICON"
+    echo "✓ 图标 $ICON"
+  else
+    echo "! 缺少 public/favicon.svg，跳过图标（桌面入口会用系统默认图标）"
+  fi
 
   # --- 2) 桌面入口 ---
   cat > "$DESKTOP_APPS" <<DESKTOP

@@ -4,8 +4,17 @@
 为什么不直接塞 SVG：
   Windows 快捷方式的 IconLocation 只认 .ico/.exe/.dll；
   macOS 的 .app 只认 .icns（放在 Contents/Resources 里）。
-两者都不认 SVG。所以这里按 Linux 版 SVG 的同一套视觉（蓝紫渐变窗口 + 绿色对勾角标）
-重画一份位图，再分别打包成 .ico 与 .icns。
+两者都不认 SVG。所以这里按同一份矢量设计重画位图，再打包成 .ico 与 .icns。
+
+设计约束（2026-11-23 重做，起因是旧图在 16px 下糊成一团）：
+  · 满版渐变圆角底 —— 小尺寸下最易识别的形状是「色块」，不是线条。
+  · 白色气泡占画面 62% —— 留白越少，里面的元素越小尺寸越清楚。
+  · 气泡内部只放两条粗横条 —— 旧版 4 条细线（3.4/64 ≈ 0.85px @16px）必然糊。
+    实测 16px 下：4 条细线糊成灰带；3 个圆点黏成一条毛边横杠；
+    两条 6.5 高、间隙 4.5 的横条仍可分辨，故采用。
+  · 去掉旧版的绿色对勾角标 —— 直径 20/64 的角标在 16px 下只剩 5px 绿点，
+    既看不清，语义（"完成/正确"）也与「会话聚合」无关。
+  · 去掉显示器底座 —— 与气泡重叠，小尺寸下变成一团深色。
 
 用法：
     python tools/make-icon.py
@@ -21,20 +30,27 @@ from PIL import Image, ImageDraw
 
 OUT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets")
 
-# 与 SVG 主色一致
+# 渐变底：靛蓝 → 紫，与 install.sh 内嵌 SVG、public/favicon.svg 保持同一份配色
 C1 = (61, 90, 254)    # #3d5afe
 C2 = (124, 77, 255)   # #7c4dff
-DARK = (42, 54, 177)  # #2a36b1 底座
-GREEN = (0, 200, 83)  # #00c853
+INK = (46, 40, 190)   # #2e28be 气泡内横条
 WHITE = (255, 255, 255)
 
 SIZES = [16, 24, 32, 48, 64, 128, 256]
 
+# 64x64 设计网格上的几何参数（与 SVG 一一对应，改一处要三处同步）
+BG = (3.0, 3.0, 61.0, 61.0)   # 满版底
+BG_R = 14.0
+BUBBLE = (11.0, 12.0, 53.0, 48.0)
+BUBBLE_R = 9.5
+TAIL = ((20.0, 44.0), (35.0, 44.0), (23.0, 56.0))
+BARS = [(19.5, 20.6, 25.5, 6.5), (19.5, 31.4, 17.5, 6.5)]  # x, y, w, h
+
 # ICNS 里各尺寸用的 OSType。macOS 10.7+ 起允许这些块直接装 PNG 数据，
 # 不必再用老的 RGB/RLE 编码 —— 体积小、跨版本都认。
-#   16@1x=icp4  16@2x=ic11   32@1x=icp5  32@2x=ic12
-#   128@1x=ic07 128@2x=ic13  256@1x=ic08 256@2x=ic14
-#   512@1x=ic09 512@2x=ic10
+#   16@1x=icp4  32@1x=icp5  64@1x=icp6
+#   128@1x=ic07 256@1x=ic08 512@1x=ic09 1024@1x=ic10
+#   16@2x=ic11  32@2x=ic12  128@2x=ic13 256@2x=ic14
 ICNS_SLOTS = [
     ("icp4", 16), ("icp5", 32), ("icp6", 64),
     ("ic07", 128), ("ic08", 256), ("ic09", 512), ("ic10", 1024),
@@ -43,67 +59,44 @@ ICNS_SLOTS = [
 
 
 def gradient(size):
-    """沿对角线做线性渐变，用逐行插值近似（对角方向用 x+y 参数化）"""
+    """沿对角线做线性渐变，用 x+y 参数化后逐像素插值。"""
     img = Image.new("RGB", (size, size))
     px = img.load()
+    d = max(1, 2 * (size - 1))
     for y in range(size):
         for x in range(size):
-            t = (x + y) / (2 * (size - 1)) if size > 1 else 0
-            px[x, y] = (
-                round(C1[0] + (C2[0] - C1[0]) * t),
-                round(C1[1] + (C2[1] - C1[1]) * t),
-                round(C1[2] + (C2[2] - C1[2]) * t),
-            )
+            t = (x + y) / d
+            px[x, y] = tuple(round(C1[i] + (C2[i] - C1[i]) * t) for i in range(3))
     return img
 
 
 def render(size):
-    # 4 倍超采样后缩小，边缘抗锯齿（小尺寸下尤其明显）
+    # 4 倍超采样后缩小，边缘抗锯齿（16px 下差别极明显）
     S = size * 4
+    u = S / 64.0
     canvas = Image.new("RGBA", (S, S), (0, 0, 0, 0))
 
-    # 渐变窗口主体：占 3..61 / 64 的比例，与 SVG 的 rect x=3 y=6 w=58 h=46 对应
-    u = S / 64.0
-    win = (round(3 * u), round(6 * u), round(61 * u), round(52 * u))
-    body = gradient(S).crop(win)
-    mask = Image.new("L", (win[2] - win[0], win[3] - win[1]), 0)
+    # 满版渐变底：先把整个画布铺满渐变，再用圆角矩形遮罩裁出来
+    mask = Image.new("L", (S, S), 0)
     ImageDraw.Draw(mask).rounded_rectangle(
-        (0, 0, mask.width - 1, mask.height - 1), radius=round(7 * u), fill=255
+        tuple(v * u for v in BG), radius=BG_R * u, fill=255
     )
-    canvas.paste(body, (win[0], win[1]), mask)
+    canvas.paste(gradient(S), (0, 0), mask)
 
     d = ImageDraw.Draw(canvas)
 
-    # 四条内容线（opacity .95/.8/.65/.5 换成与底色混合后的实色）
-    lines = [
-        (11, 15, 26, 0.95),
-        (11, 23, 40, 0.80),
-        (11, 31, 33, 0.65),
-        (11, 39, 20, 0.50),
-    ]
-    for x, y, w, op in lines:
-        col = tuple(round(255 * op + c * (1 - op)) for c in (70, 84, 255))
+    # 白色气泡 + 左下尾巴（先画尾巴再画气泡，让气泡圆角盖住接缝）
+    d.polygon([(x * u, y * u) for x, y in TAIL], fill=WHITE + (255,))
+    d.rounded_rectangle(
+        tuple(v * u for v in BUBBLE), radius=BUBBLE_R * u, fill=WHITE + (255,)
+    )
+
+    # 两条粗横条
+    for x, y, w, h in BARS:
         d.rounded_rectangle(
-            (round(x * u), round(y * u), round((x + w) * u), round((y + 3.4) * u)),
-            radius=round(1.7 * u), fill=col + (255,),
+            (x * u, y * u, (x + w) * u, (y + h) * u),
+            radius=(h / 2) * u, fill=INK + (255,),
         )
-
-    # 显示器底座
-    d.polygon(
-        [(round(20 * u), round(52 * u)), (round(44 * u), round(52 * u)),
-         (round(40 * u), round(59 * u)), (round(24 * u), round(59 * u))],
-        fill=DARK + (255,),
-    )
-
-    # 绿色对勾角标（带白描边，压在右下角）
-    cx, cy, r = 52 * u, 50 * u, 10 * u
-    d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=GREEN + (255,),
-              outline=WHITE + (255,), width=max(1, round(2.5 * u)))
-    d.line(
-        [(round(47.5 * u), round(50.2 * u)), (round(50.7 * u), round(53.4 * u)),
-         (round(56.7 * u), round(47 * u))],
-        fill=WHITE + (255,), width=max(1, round(3 * u)), joint="curve",
-    )
 
     return canvas.resize((size, size), Image.LANCZOS)
 
@@ -127,12 +120,9 @@ def write_icns(path, cache):
             cache[size] = render(size)
         buf = io.BytesIO()
         cache[size].save(buf, format="PNG")
-        data = buf.getvalue()
-        chunks.append((ostype.encode("ascii"), data))
+        chunks.append((ostype.encode("ascii"), buf.getvalue()))
 
-    body = b"".join(
-        t + struct.pack(">I", len(d) + 8) + d for t, d in chunks
-    )
+    body = b"".join(t + struct.pack(">I", len(d) + 8) + d for t, d in chunks)
     with open(path, "wb") as f:
         f.write(b"icns" + struct.pack(">I", len(body) + 8) + body)
 

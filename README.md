@@ -129,7 +129,7 @@ journalctl --user -u opensession -f     # 跟日志
 |---|---|
 | `~/桌面/opensession.desktop` | 桌面图标（已打 `metadata::trusted`，双击即开） |
 | `~/.local/share/applications/opensession.desktop` | 应用菜单里可搜索「OpenSession」 |
-| `~/.local/share/icons/hicolor/scalable/apps/opensession.svg` | 自绘图标（窗口 + 对勾，不依赖系统图标主题） |
+| `~/.local/share/icons/hicolor/scalable/apps/opensession.svg` | 自绘图标（渐变底 + 白色气泡，不依赖系统图标主题） |
 | `org.gnome.shell favorite-apps` | 固定到左侧导航栏（Ubuntu dock 的收藏列表），排在 WorkBuddy 后面 |
 
 取消固定：`./install.sh --uninstall` 会自动从导航栏摘掉；也可在图标上右键「从收藏夹中移除」。
@@ -164,9 +164,10 @@ journalctl --user -u opensession -f     # 跟日志
 浏览器优先用 Chrome / Edge 的 `--app` 模式（无地址栏独立窗口，与 Linux 版一致）；
 都找不到就退回默认浏览器标签页。
 
-> 图标不是手画的：`tools/make-icon.py` 按 Linux 版 SVG 的同一套视觉（蓝紫渐变窗口 + 绿色对勾角标）
+> 图标不是手画的：`tools/make-icon.py` 按 Linux 版 SVG 的同一套几何（渐变圆角底 + 白色气泡 + 两条粗横条）
 > 用 PIL 重画，4× 超采样后逐级缩小做抗锯齿，最后把 16/24/32/48/64/128/256 打进一个 `.ico`。
-> 要改配色改脚本里的常量重跑即可。
+> 要改配色改脚本里的常量重跑即可。**几何参数在 `make-icon.py`、`install.sh` 内嵌 SVG、
+> `public/favicon.svg` 三处必须一致**，改一处要三处同步。
 
 > 为什么 `install.ps1` 不注册系统服务：注册服务要管理员权限、写 HKLM，卸载容易留残留。
 > 启动文件夹 + 一个 `.lnk` 已经够实现「登录即起」，而且用户能在「任务管理器 → 启动」里
