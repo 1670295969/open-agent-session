@@ -166,8 +166,12 @@ journalctl --user -u opensession -f     # 跟日志
 
 > 图标不是手画的：`tools/make-icon.py` 按 Linux 版 SVG 的同一套几何（渐变圆角底 + 白色气泡 + 两条粗横条）
 > 用 PIL 重画，4× 超采样后逐级缩小做抗锯齿，最后把 16/24/32/48/64/128/256 打进一个 `.ico`。
-> 要改配色改脚本里的常量重跑即可。**几何参数在 `make-icon.py`、`install.sh` 内嵌 SVG、
-> `public/favicon.svg` 三处必须一致**，改一处要三处同步。
+> 要改配色改脚本里的常量重跑即可。**几何参数只在 `public/favicon.svg` 与 `make-icon.py` 两处**，
+> 前者是唯一设计源，后者按同一套坐标重画位图；`install.sh` 直接 `cp` 那个 SVG，不再内嵌一份。
+>
+> 同一个脚本顺带导出 `public/icons/icon-{32,48,128,192,256,512}.png` 供 PWA 用。
+> ⚠️ 这六张**只能由脚本生成**：它们曾被另一份代码用旧版几何（4 条细线 + 绿对勾 + 显示器底座）
+> 画过一次，与桌面图标完全不是一张图，装成 App 后看到的是旧图。要改设计就改脚本重跑。
 
 > 为什么 `install.ps1` 不注册系统服务：注册服务要管理员权限、写 HKLM，卸载容易留残留。
 > 启动文件夹 + 一个 `.lnk` 已经够实现「登录即起」，而且用户能在「任务管理器 → 启动」里
@@ -266,7 +270,10 @@ opensession/
 └── public/                      前端
     ├── index.html               骨架
     ├── app.css                  样式
-    ├── favicon.svg
+    ├── favicon.svg              图标的唯一设计源（桌面/ICO/ICNS/PWA 全从这里派生）
+    ├── manifest.webmanifest     PWA 清单：装成独立 App 时用
+    ├── sw.js                    service worker，不缓存任何内容（只为满足可安装条件）
+    ├── icons/                   icon-{32,48,128,192,256,512}.png，由 tools/make-icon.py 生成
     └── js/
         ├── state.js             全局状态 + 格式化工具（含平台相关文案）
         ├── md.js                轻量 Markdown 渲染（零依赖，先转义再解析）

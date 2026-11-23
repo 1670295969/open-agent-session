@@ -12,5 +12,9 @@ Thumbs.db
 .idea/
 *.swp
 
+# Python 字节码（tools/make-icon.py 跑起来会生成）
+__pycache__/
+*.py[cod]
+
 # 本机运行时数据（不应入库）
 .playwright-mcp/

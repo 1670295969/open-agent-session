@@ -22,6 +22,13 @@
     assets/opensession.ico      多尺寸（16/24/32/48/64/128/256）
     assets/opensession.icns     macOS 图标（含 1024，Retina 大图标靠它）
     assets/opensession-256.png  用于文档与 README
+    public/icons/icon-*.png     Web App 图标（32/48/128/192/256/512），
+                                由 manifest.webmanifest 与 index.html 引用
+
+⚠️ public/icons/ 里这几张必须由本脚本生成，不要手工替换：
+   它们曾经是用**旧版几何**（4 条细线 + 绿对勾 + 显示器底座）画的，
+   与重做后的图标完全不是一张图，用户把网页装成 App 后看到的是旧图。
+   PWA 的 192 也不能拿 icns 里的块顶替（那里没有 192），必须自己渲染。
 """
 import io
 import os
@@ -37,6 +44,13 @@ INK = (46, 40, 190)   # #2e28be 气泡内横条
 WHITE = (255, 255, 255)
 
 SIZES = [16, 24, 32, 48, 64, 128, 256]
+
+# Web App（PWA）图标尺寸。与 manifest.webmanifest 的 icons 列表一一对应，
+# 改这里就要同步改 manifest，否则 Chrome 在「固定到任务栏」时会挑不到图。
+PWA_SIZES = [32, 48, 128, 192, 256, 512]
+PWA_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "public", "icons"
+)
 
 # 64x64 设计网格上的几何参数（与 SVG 一一对应，改一处要三处同步）
 BG = (3.0, 3.0, 61.0, 61.0)   # 满版底
@@ -146,6 +160,23 @@ def verify_icns(path):
     return found
 
 
+def write_pwa_icons(cache):
+    """导出 public/icons/ 下的 PWA 图标。
+
+    为什么单独一条路径而不复用 ICO 里的块：ICO 最多 256，PWA 要 512；
+    而且 ICO 的封装格式浏览器不认，manifest 只接受独立 PNG 文件。
+    """
+    os.makedirs(PWA_DIR, exist_ok=True)
+    made = []
+    for size in PWA_SIZES:
+        if size not in cache:
+            cache[size] = render(size)
+        path = os.path.join(PWA_DIR, "icon-%d.png" % size)
+        cache[size].save(path, format="PNG")
+        made.append((path, os.path.getsize(path)))
+    return made
+
+
 def main():
     os.makedirs(OUT_DIR, exist_ok=True)
     cache = {s: render(s) for s in SIZES}
@@ -165,6 +196,9 @@ def main():
     print("生成:", icns, os.path.getsize(icns), "bytes")
     print("ICO 尺寸:", SIZES)
     print("ICNS 块:", ", ".join("%s=%dB" % (t, n) for t, n in found))
+
+    for path, n in write_pwa_icons(cache):
+        print("生成:", path, n, "bytes")
 
 
 if __name__ == "__main__":

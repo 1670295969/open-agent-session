@@ -123,7 +123,9 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1   # 桌面快捷 + 开机
 | 命令行（普通标签页） | `opensession-open --tab` | 在你现有浏览器里开一页 |
 | 带筛选启动 | `opensession-open --app --tool=claude` | 只显示 claude 会话 |
 | 带搜索启动 | `opensession-open --app --q=关键词` | 预填搜索框 |
+| 收起列表启动 | `opensession-open --app --noside` | 启动即占满窗口 |
 | 直接开浏览器 | 手动访问 `http://localhost:8347` | 服务得先起着 |
+| 装成独立 App | Chrome 地址栏右侧「安装」图标 | 见下方说明 |
 
 `opensession-open` 会先探活，服务没起就自己拉起来，不用手动起服务。
 
@@ -132,6 +134,16 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1   # 桌面快捷 + 开机
 ```bash
 OPENSESSION_WIN_W=1600 OPENSESSION_WIN_H=900 opensession-open --app
 ```
+
+**装成独立 App（PWA）：**
+
+页面自带 `manifest.webmanifest` 与一个不缓存的 service worker，Chrome / Edge 会认为它
+「可安装」。点地址栏右侧的安装图标，或在菜单里选「安装 OpenSession / 固定到任务栏」，
+就会得到一个用**自己的图标**、没有地址栏的窗口，和 `opensession-open --app` 效果接近。
+好处是不用依赖启动器脚本，坏处是窗口尺寸由浏览器记忆、不受 `OPENSESSION_WIN_W/H` 控制。
+
+service worker 刻意**不缓存任何内容**（只是透传），所以列表不会看到过期数据；
+断网时页面打不开，这与本工具「读本机会话文件」的定位一致。
 
 **为什么不建议从脚本 / CI 里拉起窗口**：那样启动的 GUI 进程往往没有真实的桌面会话
 （缺 `DISPLAY` / DBus），窗口不会出现。日常请点图标或 `opensession-open`。
