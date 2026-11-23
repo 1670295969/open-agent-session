@@ -1,4 +1,4 @@
-# OpenSession —— Windows 安装脚本
+﻿# OpenSession —— Windows 安装脚本
 #
 # 与 Linux 的 install.sh 一一对应，把「常驻 / 开机自启 / 桌面图标」三件事做完：
 #
