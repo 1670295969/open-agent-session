@@ -1,5 +1,7 @@
 # OpenSession
 
+**Open** + **Session**：把散落各处的 agent 会话**打开**看，再把旧会话**打开**接着聊。
+
 聚合查看 / 恢复 **Codex CLI**、**Claude Code**、**Pi**、**Hermes** 的历史会话。
 
 **当前形态：纯网页版**（浏览器大窗口，窗口自由缩放）。**Linux / macOS / Windows 三平台支持。**
