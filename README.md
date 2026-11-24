@@ -238,6 +238,7 @@ opensession/
 │   ├── config.js               常量（端口、缓存时长、超时、注入前缀）
 │   ├── platform.js             平台差异层：命令定位（PATHEXT）、.cmd 转发、开 URL
 │   ├── utils.js                通用工具（walk / readLines / 文本提取 / 标题清洗）
+│   ├── cwd.js                  工作目录归一化（`~` / 相对路径 / 尾斜杠）+ 存在性校验
 │   ├── static.js               静态资源服务（public/ 下的 html、css、js）
 │   ├── router.js               HTTP 路由表（/api/*）
 │   ├── sessions.js             会话聚合 + 5 秒缓存
@@ -266,7 +267,7 @@ opensession/
 │           ├── claude.js               stream-json 逐行解析 text 块
 │           ├── codex.js                prompt 走 stdin（`-`），stdout 直接转发
 │           ├── pi.js                   按行流式（防 UTF-8 截断）
-│           └── dsh.js                  NDJSON：session / text / status / final
+│           └── dsh.js                  NDJSON：session / text / status / final，消息走 stdin（`-`）
 └── public/                      前端
     ├── index.html               骨架
     ├── app.css                  样式
@@ -323,12 +324,25 @@ hermes 会话是只读存储，没有页面内适配器，选中它时「页面�
 | codex | `codex exec --json --skip-git-repo-check -` | 必须加 `--json`：纯文本模式没有 id；JSONL 首行 `thread.started.thread_id` 就是 |
 | pi | `pi --session <指定文件路径> -p` | 文件路径自己指定，id 从文件名尾部 uuid 取 |
 
-落盘后按 id 反查文件：claude 在 `~/.claude/projects/**/` 找 `<uuid>.jsonl`；codex 在 `~/.codex/sessions/**/` 找文件名含 thread_id 的 `rollout-*.jsonl`；pi 路径本来就是自己给的。CLI 退出与文件写完之间有毫秒级延迟，所以最多轮询 2.5 秒（25×100ms），等不到也照常把 id 返回，前端提示刷新即可，不把请求判失败。
+落盘后按 id 反查文件：claude 在 `~/.claude/projects/**/` 找 `<uuid>.jsonl`；codex 在 `~/.codex/sessions/**/` 找文件名含 thread_id 的 `rollout-*.jsonl`；pi 路径本来就是自己给的。CLI 退出与文件写完之间有延迟，所以轮询约 10 秒（间隔递增退避，不是固定 100ms —— codex/claude 的 `locate()` 是 walk 整个 sessions 目录，定频扫纯属浪费）。等不到也照常把 id 返回，前端会再补偿重试一轮，最后给出「已创建但列表待同步」的可操作收尾。
 
 ### 工作目录校验（两种创建方式一致）
 
 - **新建**：目录必须真实存在且是目录，否则直接报「工作目录不存在或不是目录：xxx」，**不会**退回 `$HOME` 静默建会话。目录打错却毫无提示、把会话建到用户没指定的地方，比报错更糟。
 - **恢复**：目录可能已被外部删除，此时退回 `$HOME`，让 CLI 至少能起来。
+
+路径统一先过 `lib/cwd.js` 的 `normalizeCwd()` 再校验。**`~` 是最容易踩的坑**：Node 的 `fs.statSync("~")` 不做 shell 展开，`~` 只是一个普通文件名，于是「填 `~` → 报目录不存在」看起来就像新建失败了。所以这里显式处理：
+
+| 输入 | 解析成 |
+|---|---|
+| `~` / `~/` / `  ~  ` | `$HOME` |
+| `~/work` | `$HOME/work` |
+| `opensession` / `./docs`（相对路径） | `$HOME/opensession`（按**主目录**解析，不按进程 cwd —— 后者用户看不见） |
+| `/a/b/` / `/a//b` | `/a/b`（尾斜杠与重复分隔符收敛；dsh 的会话目录名是 cwd 转义来的，`/a/b/` 与 `/a/b` 会得到两个不同目录） |
+| `"/a/b"`（带引号） | `/a/b`（从终端复制路径常带引号） |
+| `C:\Users\x` / `\\wsl\x` | 原样保留（非 POSIX 路径，交给存在性校验报错） |
+
+解析后仍不存在时，错误提示会把「原写法 → 实际解析路径」一起回显，否则用户看到 `/home/you/opensession` 完全猜不到是我们按主目录展开了相对路径。
 
 ### 页面内创建的失败与并发行为
 
@@ -503,8 +517,10 @@ zstd -dc f                                     // 143768 B → 718562 B（正确
 | 场景 | 命令 |
 |---|---|
 | 终端恢复 | `cd <会话 cwd> && dsh --profile headless --session-id <session-uuid>` |
-| 页面内恢复 | 同上，由 `lib/embed/adapters/dsh.js` 拉起，消息走**命令行参数**而不是 stdin |
-| 页面内新建 | `dsh --profile headless --json <message>`，从 `{type:"session",sessionId}` 拿 id |
+| 页面内恢复 | 同上，由 `lib/embed/adapters/dsh.js` 拉起，消息走 **stdin（`-`）** |
+| 页面内新建 | `dsh --profile headless --json -`，从 `{type:"session",sessionId}` 拿 id |
+
+**消息必须走 stdin，不能拼到命令行参数里**（2026-11-24 修正）。dsh headless 的位置参数就是任务文本，`-` 是它自己的 stdin 约定（`--help` 写着 "`-` reads stdin"）。原来把 message 直接 push 进 args，长消息撞内核单进程参数上限：实测 240KB 请求体 → `spawn E2BIG`，前端只看到「⚠ spawn E2BIG」。改走 stdin 后长度只受内存限制，和 claude/codex/pi 的传法也统一了。新建与 `--session-id` 恢复两条路径都实测支持 `-`。
 
 **`cd` 不能省**：`dsh --session-id` 会校验会话记录的 cwd，不在原目录执行直接报
 `session "…" was recorded in "<x>", not "<y>"`。所以扫描时 cwd 必须从首行 `session` 事件里读**原文**——

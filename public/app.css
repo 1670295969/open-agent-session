@@ -634,6 +634,13 @@ button.primary:hover { background: linear-gradient(180deg, #4681d8, #3070c4); bo
 #new-cmd .lbl { color: var(--dim); font-family: inherit; margin-right: 6px; }
 #new-cmd .frag { color: #e8a33d; }
 
+/* 工作目录解析提示：只占一行，空内容时不留空白（不写死 height） */
+.cwd-tip {
+  margin-top: 6px; font-size: 12px; color: var(--dim); line-height: 1.5;
+  word-break: break-all;
+}
+.cwd-tip:empty { display: none; }
+
 /* ---------- 删除确认弹窗 ---------- */
 #delmodal {
   position: fixed; inset: 0; background: rgba(0, 0, 0, .55); display: none;

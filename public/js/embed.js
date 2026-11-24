@@ -302,7 +302,14 @@ async function sendEmbed() {
   if (state.embedBusy) return;
   const ta = document.getElementById("embed-input");
   const text = (ta && ta.value || "").trim();
-  if (!text || !state.active) return;
+  if (!text) return;
+  // 没有 active 说明当前是「新建草稿」这类过渡视图，没有可恢复的目标。
+  // 以前这里静默 return —— 用户按了回车、什么都没发生、也没提示，
+  // 看起来就是「输入消息报错」。现在明确告诉他为什么没发出去。
+  if (!state.active) {
+    toast("当前没有打开的会话，先点左侧列表选一个，或等新建跑完");
+    return;
+  }
 
   // 记下本次回复属于哪个会话：流跑完要重画，若此时用户已切到别的会话，
   // 就不能拿旧会话去 openSession，否则会把用户刚点开的会话顶掉。

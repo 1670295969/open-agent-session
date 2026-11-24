@@ -68,7 +68,8 @@ if ("serviceWorker" in navigator) {
       <option value="hermes">Hermes　—　hermes</option>
     </select>
     <label>工作目录</label>
-    <input id="new-cwd" list="cwds" placeholder="例如 /home/alice/work/myproject" spellcheck="false">
+    <input id="new-cwd" list="cwds" placeholder="例如 ~ 或 /home/alice/work/myproject" spellcheck="false">
+    <div id="new-cwd-tip" class="cwd-tip"></div>
     <datalist id="cwds"></datalist>
     <label>第一条消息　<span class="opt">（仅页面内创建需要，终端方式忽略）</span></label>
     <textarea id="new-first" rows="3" placeholder="例如：介绍一下这个项目…　Ctrl+Enter 在本页创建" spellcheck="false"></textarea>
