@@ -24,6 +24,7 @@ function initSide() {
   try { saved = localStorage.getItem(SIDE_KEY); } catch {}
   applySideCollapsed(saved === "1", false);
   // Ctrl+B 切换（与多数编辑器/浏览器的侧栏习惯一致）
+  // Ctrl+K 聚焦搜索框（浏览器的 Ctrl+K 是「搜索地址栏」，这里覆盖掉更顺手）
   document.addEventListener("keydown", (e) => {
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey &&
         (e.key === "b" || e.key === "B")) {
@@ -33,6 +34,14 @@ function initSide() {
       if (typing) return;
       e.preventDefault();
       toggleSide();
+    }
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey &&
+        (e.key === "k" || e.key === "K")) {
+      e.preventDefault();
+      // 侧栏折叠时先展开，否则搜索框在屏幕外，聚焦了也看不见
+      if (state.sideCollapsed) applySideCollapsed(false, true);
+      const el = $("#search");
+      if (el) { el.focus(); el.select(); }
     }
   });
 }
@@ -46,13 +55,22 @@ function applyUrlPrefs() {
   const q = p.get("q");
   if (tool && ["codex", "claude", "pi", "dsh", "hermes"].includes(tool)) {
     state.typeFilter = tool;
-    document.querySelectorAll(".tchip").forEach((x) => x.classList.remove("on"));
+    document.querySelectorAll(".tchip[data-t]").forEach((x) => x.classList.remove("on"));
     const chip = document.querySelector('.tchip[data-t="' + tool + '"]');
     if (chip) chip.classList.add("on");
   }
   if (q) {
     const el = $("#search");
     if (el) el.value = q;
+    // 启动参数可以带 --full=关键词 直接进全文模式（不加则按标题过滤，保持原行为）
+    if (p.get("full") === "1") {
+      state.searchMode = "full";
+      const btn = $("#smode");
+      if (btn) { btn.textContent = "全文"; btn.classList.add("on"); }
+      const inp = $("#search");
+      if (inp) inp.placeholder = "搜索正文 / 思考内容…（回车立即搜）";
+      if (q) setTimeout(runFullSearch, 300);
+    }
   }
   // 折叠状态也可由启动参数强制指定：--noside
   if (p.get("side") === "0") applySideCollapsed(true, true);

@@ -70,12 +70,56 @@ html.side-collapsed #bar { padding-left: 108px; }
   border-radius: 6px; color: var(--txt); outline: none; font-size: 14.5px;
 }
 #search:focus { border-color: var(--accent); }
-#stats { padding: 5px 16px; font-size: 13.5px; color: var(--dim); }
-#typebar { display: flex; gap: 7px; padding: 0 16px 9px; flex-wrap: wrap; }
+/* 搜索行：输入框 + 范围切换按钮并排 */
+#searchrow { display: flex; gap: 7px; align-items: stretch; }
+#searchrow #search { flex: 1; min-width: 0; width: auto; }
+#smode {
+  flex-shrink: 0; padding: 0 12px; font-size: 12.5px; border-radius: 6px;
+  color: var(--dim); background: var(--panel2);
+}
+#smode.on {
+  background: var(--accent); border-color: var(--accent);
+  color: #12161d; font-weight: 600;
+}
+#statsrow {
+  display: flex; align-items: center; gap: 8px; padding: 4px 16px 7px;
+}
+/* 计数用**三列网格**而不是 flex-wrap。
+   原因：五个工具名长度差很多（Pi 短、DeepSeek 长），flex-wrap 在 400px 侧栏里
+   会把最后一个（Hermes）单独挤到第二行，看起来像排版出错。
+   固定三列后必然是 3+2 两行对齐，宽度变化也不会出现「落单一项」。 */
+#stats {
+  flex: 1; min-width: 0; font-size: 11.5px; color: var(--dim);
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px 8px; line-height: 1.5;
+}
+#stats .st {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#stats .st b { color: #aab2be; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* 工具筛选：同样三列网格，六个 chip 天然排成 3+2，整整齐齐 */
+#typebar {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px; padding: 0 16px 8px;
+}
+#typebar .tchip { text-align: center; }
+/* 时间筛选：比工具筛选低一级（字号更小、内边距更紧），避免两组 chip 抢注意力。
+   用 flex（不是 grid）：这里 4 个 chip 长度接近，一行放得下，不需要网格对齐。 */
+#timebar {
+  display: flex; gap: 6px; padding: 0 16px 9px; flex-wrap: wrap;
+  align-items: center;
+}
+#timebar .tlabel {
+  font-size: 11.5px; color: #6f7681; margin-right: 1px; user-select: none;
+  flex-shrink: 0;
+}
+#timebar .tchip { padding: 2px 10px; font-size: 11.5px; border-radius: 11px; }
+#timebar .tchip.on { background: #4a5568; color: #fff; border-color: transparent; }
 .tchip {
-  padding: 4px 13px; border-radius: 15px; border: 1px solid var(--border);
-  background: var(--panel2); color: var(--dim); cursor: pointer; font-size: 13.5px;
-  user-select: none;
+  padding: 3px 11px; border-radius: 14px; border: 1px solid var(--border);
+  background: var(--panel2); color: var(--dim); cursor: pointer; font-size: 12.5px;
+  user-select: none; white-space: nowrap;
 }
 .tchip:hover { border-color: var(--accent); }
 .tchip.on { color: #fff; border-color: transparent; }
@@ -125,10 +169,10 @@ html.side-collapsed #bar { padding-left: 108px; }
   border: solid #1e1f22; border-width: 0 2px 2px 0; transform: rotate(45deg);
 }
 
-/* 多选按钮 */
+/* 多选按钮：在统计行右侧，自带位置，不参与 chip 行的换行流 */
 #selbtn {
-  margin-left: auto; padding: 3px 10px; font-size: 12.5px; border-radius: 13px;
-  background: var(--panel2); color: var(--dim);
+  flex-shrink: 0; padding: 2px 9px; font-size: 11.5px; line-height: 1.7;
+  border-radius: 12px; background: var(--panel2); color: var(--dim);
 }
 #selbtn.on { background: var(--accent); border-color: var(--accent); color: #12161d; font-weight: 600; }
 
@@ -164,6 +208,122 @@ html.side-collapsed #bar { padding-left: 108px; }
 #listpager button:disabled { opacity: .35; cursor: default; }
 #listpager .cur { color: var(--accent); }
 
+/* ---------- 全文搜索结果 ---------- */
+.ssummary {
+  position: sticky; top: 0; z-index: 2; padding: 7px 16px;
+  background: #2b2f36; border-bottom: 1px solid var(--border);
+  font-size: 12px; color: #93a7c4;
+}
+.sstatus {
+  padding: 22px 16px; font-size: 13px; color: var(--dim); line-height: 1.8;
+}
+.sstatus .dim { color: #6f757c; font-size: 12px; }
+
+/* 一条会话 = 一张卡：标题行 + 若干命中片段。
+   卡片之间留 8px 间隙而不是细分割线 —— 片段本身已有底色，
+   再用分割线会把左侧列表切成密密麻麻的横条，扫读时很吵。 */
+.sitem {
+  margin: 8px 8px 0; padding: 9px 11px; border-radius: 8px; cursor: pointer;
+  background: var(--panel2); border: 1px solid transparent;
+  transition: border-color .13s, background .13s;
+}
+.sitem:hover { border-color: #4d525b; }
+.sitem.active { border-color: var(--accent); background: #2d3a4d; }
+.sitem .stitle {
+  display: flex; align-items: center; gap: 7px; font-size: 14px; color: var(--txt);
+  min-width: 0;
+}
+.sitem .stitle .stxt {
+  flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+}
+.sitem .scount {
+  flex-shrink: 0; font-size: 11px; color: #8ce0ac;
+  background: rgba(88, 201, 138, .13); border-radius: 9px; padding: 1px 7px;
+}
+.sitem .smeta {
+  margin-top: 3px; font-size: 11.5px; color: var(--dim);
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+}
+.sitem .shits { margin-top: 7px; display: flex; flex-direction: column; gap: 5px; }
+.sitem .shit {
+  padding: 5px 8px; border-radius: 6px; font-size: 12.5px; line-height: 1.62;
+  color: #b6bdc9; background: rgba(0, 0, 0, .22);
+  border-left: 2px solid #454b55;
+  /* 片段可能很长（一行日志几 KB），必须裁掉，否则一个结果能占满整屏 */
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.sitem .shit:hover { background: rgba(0, 0, 0, .34); color: #d5dae3; }
+/* 用户提问的命中偏蓝，助手回答偏灰：一眼能分辨「我说过的」和「它说过的」 */
+.sitem .shit.huser { border-left-color: var(--accent); }
+.sitem .shit mark {
+  background: rgba(255, 200, 80, .26); color: #ffd98a;
+  padding: 0 1px; border-radius: 2px; font-weight: 600;
+}
+
+/* 从搜索结果跳到会话后，被定位的那条消息闪一下边框，确认视线落点 */
+@keyframes hitflash {
+  0% { background: rgba(255, 200, 80, .16); }
+  100% { background: transparent; }
+}
+.msg.hitflash { animation: hitflash 1.6s ease-out; border-radius: var(--r-md); }
+
+/* ---------- 提问导航（大纲）---------- */
+/* 浮在正文右下角的圆形按钮。固定在视口右下，不参与 #main 的布局，
+   所以窗口重排 / 正文重绘都不会让它移位。 */
+#navfab {
+  position: fixed; right: 22px; bottom: 22px;
+  /* z-index 必须低于弹窗（#modal 9 / #delmodal 10）：
+     否则打开新建弹窗时，这个圆按钮会浮在遮罩上面，看着像能点。 */
+  z-index: 8;
+  /* 输入栏展开时往上挪，避免压住发送按钮 */
+  transition: bottom .18s ease;
+}
+body.has-input #navfab { bottom: 96px; }
+#navfab #navbtn {
+  width: 40px; height: 40px; padding: 0; border-radius: 50%;
+  font-size: 16px; line-height: 1; color: var(--dim);
+  background: var(--panel2); border: 1px solid var(--border);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .45);
+}
+#navfab #navbtn:hover { color: var(--accent); border-color: var(--accent); }
+
+#outline {
+  display: none; position: fixed; right: 22px; bottom: 74px;
+  z-index: 8;   /* 同样低于弹窗遮罩 */
+  width: 380px; max-width: calc(100vw - 44px);
+  max-height: min(60vh, 520px);
+  background: #25272d; border: 1px solid var(--line); border-radius: var(--r-lg);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, .7);
+  flex-direction: column; overflow: hidden;
+}
+#outline.show { display: flex; }
+body.has-input #outline { bottom: 148px; }
+#outline .ohead {
+  display: flex; align-items: center; gap: 6px; padding: 9px 10px 9px 14px;
+  border-bottom: 1px solid var(--line); background: rgba(255, 255, 255, .03);
+}
+#outline .otitle { flex: 1; font-size: 13px; color: #b3b9c4; letter-spacing: .3px; }
+#outline .ohead button { padding: 2px 9px; font-size: 12.5px; border-radius: 6px; }
+#outline .olist { overflow-y: auto; padding: 6px; }
+#outline .oitem {
+  display: flex; align-items: baseline; gap: 8px; padding: 7px 9px;
+  border-radius: 7px; cursor: pointer; font-size: 13px; color: #c3c9d4;
+  line-height: 1.5;
+}
+#outline .oitem:hover { background: var(--surf-2); color: #fff; }
+#outline .oitem.on { background: rgba(91, 157, 255, .16); color: #bcd4ff; }
+#outline .onum {
+  flex-shrink: 0; min-width: 20px; font-family: var(--mono); font-size: 11.5px;
+  color: #7d848f; text-align: right; font-variant-numeric: tabular-nums;
+}
+#outline .otxt {
+  flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+}
+#outline .otime {
+  flex-shrink: 0; font-family: var(--mono); font-size: 11px; color: #7d848f;
+}
+
 /* ---------- 右侧正文 ---------- */
 #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 #bar {
@@ -177,9 +337,19 @@ html.side-collapsed #bar { padding-left: 108px; }
 #bar .info { flex: 1 1 340px; min-width: 240px; overflow: hidden; }
 #bar button { flex-shrink: 0; white-space: nowrap; font-size: 13.5px; padding: 6px 13px; }
 #bar .cwd {
-  display: flex; align-items: center; gap: 7px;
+  display: flex; align-items: center; gap: 7px; min-width: 0;
   font-size: 13.5px; color: #b3b9c4; white-space: nowrap;
-  overflow: hidden; text-overflow: ellipsis; margin-bottom: 3px;
+  margin-bottom: 3px;
+}
+/* 路径是唯一可压缩的部分：给它 min-width:0 + ellipsis，
+   长路径自动截断，右侧的徽标与会话规模始终保持可见。 */
+#bar .cwdpath {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* 会话规模（条数 + 时间跨度）：比 cwd 更弱，靠右不抢视线 */
+#bar .cwdmeta {
+  flex-shrink: 0; margin-left: auto; padding-left: 12px;
+  font-size: 11.5px; color: #7d848f; font-variant-numeric: tabular-nums;
 }
 #bar .cmd {
   display: flex; align-items: center; gap: 7px;
@@ -235,6 +405,19 @@ button.primary:hover { background: linear-gradient(180deg, #4681d8, #3070c4); bo
 .msg.user::before { background: linear-gradient(180deg, var(--accent), rgba(91,157,255,.18)); }
 .msg:hover::before { filter: brightness(1.45); }
 .msg.sidechain { opacity: .5; }
+
+/* 单条消息的复制按钮：平时隐形，悬停消息才出现（常驻会在长会话里排成一列噪点） */
+.msg .msgcopy {
+  position: absolute; top: 0; right: 4px; z-index: 3;
+  width: 26px; height: 24px; padding: 0; line-height: 1;
+  font-size: 13px; color: var(--dim); background: var(--panel2);
+  border: 1px solid var(--line); border-radius: 6px;
+  opacity: 0; transition: opacity .12s, color .12s;
+}
+.msg:hover .msgcopy { opacity: 1; }
+.msg .msgcopy:hover { color: var(--accent); border-color: var(--accent); }
+/* 键盘用户：按钮获得焦点时必须可见，否则根本不知道有这功能 */
+.msg .msgcopy:focus-visible { opacity: 1; }
 
 /* 角色行：色点 + 角色名 + 时间，三者字号/字重都不同，扫一眼能分块 */
 .msg .who {

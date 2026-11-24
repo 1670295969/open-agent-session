@@ -110,11 +110,20 @@ function toggleEmbed(btn) {
   if (ib) ib.classList.toggle("show", state.embedOpen);
   if (badge) badge.style.display = state.embedOpen ? "inline-flex" : "none";
   if (btn) btn.textContent = state.embedOpen ? "✕ 关闭页面内会话" : "💻 页面内恢复";
+  syncInputBarClass();
   if (state.embedOpen) {
     fillEmbedSelectors();
     const ta = document.getElementById("embed-input");
     if (ta) ta.focus();
   }
+}
+
+/* body.has-input 标记「底部有输入栏」，供 CSS 把右下角的提问导航按钮往上顶，
+   否则它会压在发送按钮上。输入栏是「打开状态 + 当前会话可嵌入」两个条件同时成立
+   才真的存在，所以不能只看 state.embedOpen。 */
+function syncInputBarClass() {
+  const ib = document.getElementById("inputbar");
+  document.body.classList.toggle("has-input", !!(ib && ib.classList.contains("show")));
 }
 
 function bindEmbedInput() {

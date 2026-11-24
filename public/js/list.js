@@ -6,6 +6,11 @@ const TOOL_LABELS = { codex: "Codex", claude: "Claude", pi: "Pi", dsh: "DeepSeek
 function filteredSessions() {
   let set = state.sessions;
   if (state.typeFilter !== "all") set = set.filter((s) => s.tool === state.typeFilter);
+  // 时间筛选：按 mtime 落在最近 N 天内。0 = 不限。
+  if (state.timeFilter) {
+    const since = Date.now() - state.timeFilter * 86400000;
+    set = set.filter((s) => s.mtime >= since);
+  }
   const q = ($("#search").value || "").toLowerCase().trim();
   if (q) {
     set = set.filter((s) =>
@@ -66,6 +71,14 @@ function itemEl(s, withBadge) {
 
 
 function renderList() {
+  // 全文搜索模式：列表位置交给搜索结果渲染。
+  // 这里必须早返回 —— 否则下面会把搜索结果整片换成普通会话列表，
+  // 用户搜完看到的还是全量列表，等于搜索没生效。
+  if (state.searchMode === "full" && ($("#search").value || "").trim()) {
+    renderSearchResults();
+    return;
+  }
+
   const set = filteredSessions();
   const totalPages = Math.max(1, Math.ceil(set.length / LIST_PAGE_SIZE));
   if (state.listPage >= totalPages) state.listPage = totalPages - 1;
@@ -120,12 +133,17 @@ function gotoListPage(delta) {
 }
 
 function setTypeFilter(tool) {
+  // 兜底：dataset.t 缺失时不要写进 state —— undefined 会让后面所有筛选都匹配不上，
+  // 页面表现为「列表整片变空」，很难和别的 bug 区分。
+  if (!tool) return;
   state.typeFilter = tool;
   state.listPage = 0;
-  document.querySelectorAll(".tchip").forEach((x) => x.classList.remove("on"));
+  document.querySelectorAll(".tchip[data-t]").forEach((x) => x.classList.remove("on"));
   const chip = document.querySelector('.tchip[data-t="' + tool + '"]');
   if (chip) chip.classList.add("on");
-  renderList();
+  // 全文模式下类型是后端过滤条件，切 chip 要重搜
+  if (state.searchMode === "full" && ($("#search").value || "").trim()) runFullSearch();
+  else renderList();
 }
 
 async function loadSessions() {
@@ -165,19 +183,44 @@ function updateStats() {
   const c = { codex: 0, claude: 0, pi: 0, dsh: 0, hermes: 0 };
   for (const s of state.sessions) c[s.tool] = (c[s.tool] || 0) + 1;
   const el = $("#stats");
-  if (el) {
-    el.textContent = "Codex " + c.codex + " · Claude " + c.claude +
-      " · Pi " + c.pi + " · DeepSeek " + c.dsh + " · Hermes " + c.hermes;
-  }
+  if (!el) return;
+  // 用独立的 .st 元素而不是拼字符串：拼接的整串在窄侧栏里会从任意字间断开，
+  // 「Hermes 23」会被拆到第二行独自占位。flex + nowrap 保证每项整体换行。
+  const parts = [
+    ["Codex", c.codex], ["Claude", c.claude], ["Pi", c.pi],
+    ["DeepSeek", c.dsh], ["Hermes", c.hermes],
+  ];
+  el.innerHTML = parts.map(([name, n]) =>
+    '<span class="st">' + esc(name) + ' <b>' + n + "</b></span>").join("");
 }
 
 function bindSearch() {
-  const el = $("#search");
-  if (el) el.oninput = () => { state.listPage = 0; renderList(); };
+  bindSearchMode();
+  bindTimeChips();
+}
+
+// 时间筛选 chip
+function bindTimeChips() {
+  document.querySelectorAll("#timebar .tchip").forEach((ch) => {
+    ch.onclick = () => {
+      state.timeFilter = Number(ch.dataset.d) || 0;
+      document.querySelectorAll("#timebar .tchip").forEach((x) => x.classList.remove("on"));
+      ch.classList.add("on");
+      state.listPage = 0;
+      // 全文模式下时间条件由后端过滤，必须重搜一次
+      if (state.searchMode === "full" && ($("#search").value || "").trim()) runFullSearch();
+      else renderList();
+    };
+  });
 }
 
 function bindTypeChips() {
-  document.querySelectorAll(".tchip").forEach((ch) => {
+  // 🔴 必须带 [data-t]：页面上有两组 .tchip（工具筛选 #typebar + 时间筛选 #timebar），
+  // 用裸 `.tchip` 会把时间 chip 一起绑上，点击时 dataset.t 是 undefined，
+  // state.typeFilter 被写成 undefined → filteredSessions 一个都不匹配，
+  // 列表整片变空（连「回标题模式」都救不回来）。这个 bug 表现是「列表突然全空」，
+  // 但根因在这里，不在筛选逻辑。
+  document.querySelectorAll(".tchip[data-t]").forEach((ch) => {
     ch.onclick = () => setTypeFilter(ch.dataset.t);
   });
 }

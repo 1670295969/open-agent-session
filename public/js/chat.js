@@ -57,7 +57,7 @@ function fmtMsgTime(t) {
    助手一次回答常被拆成「一句话 + 一串工具调用」（实测某会话连续 5 条），
    每条都重印「助手 18:02:18」会糊成一片。cont 的消息不画角色行，
    只在组首标一次时间，读起来才像「一次回答里的几个步骤」。 */
-function msgHtml(m, cont, end) {
+function msgHtml(m, cont, end, idx) {
   const toolHtml = m.tool
     ? '<div class="toolchip" title="' + escAttr(m.tool) + '">⚙ ' + esc(m.tool) + "</div>" : "";
   const sc = m.sidechain ? " sidechain" : "";
@@ -75,10 +75,40 @@ function msgHtml(m, cont, end) {
     '<div class="who"><i class="dot"></i><b class="role">' + role + "</b>" +
       timeHtml + sideHtml + "</div>";
   const cls = "msg " + m.role + sc + (cont ? " cont" : "") + (end ? " end" : "");
-  return '<div class="' + cls + '">' +
+  // data-i 是消息序号：全文搜索命中后要按序号滚到那一条并高亮（search.js 用）
+  const di = idx == null ? "" : ' data-i="' + idx + '"';
+  // 悬停出现的复制按钮。用 DOM 绑定而不是内联 onclick：消息正文里可能带引号，
+  // 拼进属性会把 onclick 打断（这个坑 escAttr 那节记过一次）。
+  return '<div class="' + cls + '"' + di + ">" +
+      '<button class="msgcopy" title="复制这条消息的原文">⧉</button>' +
       who + thinkHtml(m.think) +
       (body ? '<div class="bubble md">' + body + "</div>" : "") + toolHtml +
     "</div>";
+}
+
+/* 会话规模摘要：消息数 + 时间跨度。
+   放在 cwd 行里而不是新加一行 —— #bar 已经两行（cwd / 命令），
+   再加一行会把固定栏压得很高，正文可见区域变小。
+   时间跨度用「首次→末次」而不是「耗时」：中间可能隔了好几天没用，
+   说耗时是错的，只有首末时间是真事实。 */
+function spanHtml(msgs) {
+  if (!msgs.length) return "";
+  const times = msgs.map((m) => m.time).filter(Boolean).sort();
+  let span = "";
+  if (times.length >= 2) {
+    const a = new Date(String(times[0]).replace(" ", "T"));
+    const b = new Date(String(times[times.length - 1]).replace(" ", "T"));
+    const d = (b - a) / 1000;
+    if (isFinite(d) && d > 0) {
+      const fmt = (s) => s < 60 ? Math.round(s) + " 秒"
+        : s < 3600 ? Math.round(s / 60) + " 分"
+        : s < 86400 ? (s / 3600).toFixed(1) + " 小时"
+        : (s / 86400).toFixed(1) + " 天";
+      span = " · 跨 " + fmt(d);
+    }
+  }
+  return '<span class="cwdmeta" title="消息条数与首次到末次的时间跨度">' +
+    msgs.length + " 条" + span + "</span>";
 }
 
 function renderChat() {
@@ -105,7 +135,7 @@ function renderChat() {
     const cont = !!prev && m.role === "assistant" && prev.role === "assistant";
     // 组尾：下一条不是助手了，这条才拿回正常的大间距，把轮次分开
     const end = !next || next.role !== "assistant" || !!next.sidechain;
-    return msgHtml(m, cont, end);
+    return msgHtml(m, cont, end, i);
   }).join("");
   const chat = '<div id="chat">' + html + emptyHint + "</div>";
 
@@ -113,8 +143,13 @@ function renderChat() {
   const badge = isEmbeddable(s)
     ? '<span id="livebadge" style="display:' + (embedOn ? "inline-flex" : "none") + '">嵌入会话中</span>'
     : "";
+  // 路径必须包一层可收缩的 span：#bar .cwd 是 flex 容器，直接放文本节点
+  // 无法收缩，路径一长就把右侧的条数/跨度整个挤出可视区（overflow:hidden 吞掉）。
   const bar = '<div id="bar"><div class="info">' +
-      '<div class="cwd">📁 ' + esc(s.cwd || "(未知目录)") + badge + '</div>' +
+      '<div class="cwd">' +
+        '<span class="cwdpath" title="' + escAttr(s.cwd || "") + '">📁 ' +
+          esc(s.cwd || "(未知目录)") + '</span>' +
+        badge + spanHtml(msgs) + '</div>' +
       '<div class="cmd">' + cmdPrompt() + ' ' + esc(s.resumeCmd) + '</div></div>' +
       '<button id="mdbtn" class="' + (state.mdOff ? "" : "on") + '" onclick="toggleMd(this)" ' +
         'title="切换 Markdown 渲染 / 纯文本">M↓ Markdown</button>' +
@@ -128,11 +163,53 @@ function renderChat() {
 
   $("#main").innerHTML = bar + chat + (isEmbeddable(s) ? inputBarHtml(embedOn) : "");
   bindEmbedInput();
+  syncInputBarClass();
+  // 提问导航随会话内容重建：换会话 / 追加消息后，大纲里的条目必须跟着变，
+  // 否则点进去会跳到已经不存在的序号。
+  renderOutline();
   if (embedOn) {
     fillEmbedSelectors();
     const ta = $("#embed-input");
     if (ta) ta.focus();
   }
+}
+
+// ---- 单条消息复制 ----
+// 用事件委托而不是给每个按钮绑 onclick：#chat 每次重绘都整体重建，
+// 逐个绑会在长会话里挂上几百个监听，且重绘后旧引用全部泄漏。
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest(".msgcopy");
+  if (!btn) return;
+  e.stopPropagation();
+  const wrap = btn.closest(".msg");
+  const i = wrap ? Number(wrap.dataset.i) : -1;
+  const m = (state.msgs || [])[i];
+  if (!m) return;
+  // 复制「原文」：正文 + 工具调用，不带思考（思考是旁注，混进去反而不好用）。
+  // 想看思考就展开后手动选中。
+  const parts = [];
+  if (m.text) parts.push(m.text);
+  if (m.tool) parts.push("⚙ " + m.tool);
+  const text = parts.join("\n\n");
+  if (!text) { toast("这条消息只有思考内容，展开后可手动选中复制"); return; }
+  const done = () => toast("已复制这条消息");
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+  } else {
+    fallbackCopy(text, done);
+  }
+});
+
+// 非安全上下文（http 且非 localhost）下 clipboard API 不可用，退回到 execCommand
+function fallbackCopy(text, done) {
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.style.position = "fixed";
+  ta.style.opacity = "0";
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand("copy"); done(); } catch { toast("复制失败"); }
+  ta.remove();
 }
 
 function scrollChatBottom() {

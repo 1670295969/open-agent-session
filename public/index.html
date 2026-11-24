@@ -31,9 +31,17 @@ if ("serviceWorker" in navigator) {
         <button onclick="openNew()">＋ 新建会话</button>
       </span>
     </h1>
-    <input id="search" placeholder="搜索标题 / 项目路径…">
+    <div id="searchrow">
+      <input id="search" placeholder="搜索标题 / 项目路径…（Ctrl+K）">
+      <button id="smode" onclick="toggleSearchMode()" title="切换搜索范围：标题 / 全文">标题</button>
+    </div>
   </div>
-  <div id="stats"></div>
+  <div id="statsrow">
+    <div id="stats"></div>
+    <!-- 多选是「操作」不是「筛选」：放在统计行右侧，不占 chip 行的宽度。
+         原来挤在 chip 行末尾，400px 侧栏里会把 Hermes 顶到第二行。 -->
+    <button id="selbtn" onclick="toggleSelectMode()" title="多选后批量删除">☑ 多选</button>
+  </div>
   <div id="typebar">
     <span class="tchip on all" data-t="all">全部</span>
     <span class="tchip codex" data-t="codex">Codex</span>
@@ -41,7 +49,13 @@ if ("serviceWorker" in navigator) {
     <span class="tchip pi" data-t="pi">Pi</span>
     <span class="tchip dsh" data-t="dsh">DeepSeek</span>
     <span class="tchip hermes" data-t="hermes">Hermes</span>
-    <button id="selbtn" onclick="toggleSelectMode()" title="多选后批量删除">☑ 多选</button>
+  </div>
+  <div id="timebar">
+    <span class="tlabel">时间</span>
+    <span class="tchip on" data-d="0">不限</span>
+    <span class="tchip" data-d="1">今天</span>
+    <span class="tchip" data-d="7">7 天</span>
+    <span class="tchip" data-d="30">30 天</span>
   </div>
   <div id="selbar"></div>
   <div id="list"></div>
@@ -86,15 +100,32 @@ if ("serviceWorker" in navigator) {
 
 <div id="toast"></div>
 
+<!-- 长会话内的提问导航：独立浮在正文右下角，不占 #bar 的位置
+     （#bar 已有 6 个按钮，再加一个会在窄窗口挤成两行） -->
+<div id="navfab">
+  <button id="navbtn" onclick="toggleOutline(event)" title="提问导航：列出本次会话所有提问，点击跳转（Alt+↑/↓ 逐条跳）">☰</button>
+</div>
+<div id="outline">
+  <div class="ohead">
+    <span class="otitle">提问导航</span>
+    <button onclick="jumpQ(-1)" title="上一个提问（Alt+↑）">↑</button>
+    <button onclick="jumpQ(1)" title="下一个提问（Alt+↓）">↓</button>
+    <button onclick="toggleOutline(event)" title="关闭">✕</button>
+  </div>
+  <div class="olist"></div>
+</div>
+
 <!-- 折叠后浮在正文左上角的恢复手柄（#main 的内容会被反复重绘，只能挂在 body 上） -->
 <button id="handle" onclick="toggleSide()" title="显示左侧列表（Ctrl+B）">» 会话列表</button>
 
 <script src="/js/state.js"></script>
 <script src="/js/md.js"></script>
 <script src="/js/list.js"></script>
+<script src="/js/search.js"></script>
 <script src="/js/del.js"></script>
 <script src="/js/chat.js"></script>
 <script src="/js/embed.js"></script>
+<script src="/js/outline.js"></script>
 <script src="/js/newmodal.js"></script>
 <script src="/js/main.js"></script>
 </body>

@@ -18,6 +18,12 @@ const state = {
   selected: new Set(), // 已勾选的 file 集合
   mdOff: false,      // 正文是否关闭 Markdown 渲染（退回纯文本）
   sideCollapsed: false, // 左侧列表是否折叠（localStorage 记住偏好）
+  // 搜索：title = 只匹配标题/cwd（本地过滤，即时）；full = 服务端全文搜索
+  searchMode: "title",
+  searchRes: null,   // 全文搜索结果 { q, took, total, results }
+  searchBusy: false,
+  searchSeq: 0,      // 请求序号，丢弃过期响应（连打关键字时后到的旧结果会盖掉新的）
+  timeFilter: 0,     // 0 = 全部，否则为「最近 N 天」
   // 运行环境信息（后端 /api/trash 返回）：回收站路径与平台名，
   // 删除提示文案、路径缩短都按它走，避免把 Linux 的 ~/.local/share/Trash
   // 写死在页面里给 Windows 用户看

@@ -242,6 +242,7 @@ opensession/
 │   ├── static.js               静态资源服务（public/ 下的 html、css、js）
 │   ├── router.js               HTTP 路由表（/api/*）
 │   ├── sessions.js             会话聚合 + 5 秒缓存
+│   ├── search.js               全文搜索：跨会话搜正文 + 思考，按 mtime+size 缓存解析结果
 │   ├── trash.js                删除：路径白名单校验（跨平台共用）+ 平台分派
 │   ├── trash-linux.js          freedesktop 回收站实现
 │   ├── trash-mac.js            macOS 废纸篓（~/.Trash）实现
@@ -279,11 +280,13 @@ opensession/
         ├── state.js             全局状态 + 格式化工具（含平台相关文案）
         ├── md.js                轻量 Markdown 渲染（零依赖，先转义再解析）
         ├── list.js              左侧列表：筛选、统一分页、分组渲染、全局刷新
+        ├── search.js            全文搜索：模式切换、防抖、结果片段、命中定位
         ├── del.js               删除：确认弹窗、多选批量、回收站交互
         ├── chat.js              右侧正文：Markdown 消息渲染（全文不分页）、顶部操作
         ├── embed.js             页面内会话：输入栏、自绘下拉、SSE 收发、页面内新建
+        ├── outline.js           提问导航（大纲）：只列用户提问，点击/Alt+↑↓ 跳转
         ├── newmodal.js          新建会话弹窗（终端 / 页面内两条路径）
-        └── main.js              入口装配（含 ?tool=&q= 预置筛选、平台信息拉取）
+        └── main.js              入口装配（含 ?tool=&q=&full= 预置筛选、平台信息拉取）
 ```
 
 ## 正文渲染与刷新
@@ -567,6 +570,56 @@ codex resume --no-daemon 01a200f5-aaac-7f70-82a1-b25059212597
 
 注意 `claude` 扫描器的一个坑：`summary` 类型单独就能给出标题，所以提前退出条件必须是 `id && cwd && title && hasBody`。只判断前三个的话，"仅有 summary、无正文"的会话会被漏标成有内容。
 
+## 全文搜索与导航（2026-11-24）
+
+### 搜索：标题 vs 全文
+
+左侧搜索框有两种模式，右上角按钮切换（默认「标题」）：
+
+| 模式 | 实现 | 速度 | 搜什么 |
+|---|---|---|---|
+| 标题 | 前端过滤已加载列表 | 即时 | 标题 + cwd |
+| 全文 | `GET /api/search` → `lib/search.js` | 首次 2–4s，之后 10–20ms | 消息正文 + 思考内容 |
+
+默认标题模式不是偷懒，是**性能边界**：全文要把全部会话文件解析一遍。实测 161 个会话、原始 184MB、正文约 7MB，冷启动 3.2s（同步串行解析 6361 条消息）。每敲一个字符触发一次会让输入明显发卡，所以：
+
+- 全文模式走 320ms 防抖 + 请求序号（`state.searchSeq`）丢弃过期响应——连打关键字时先发的慢请求可能后到，不丢序号会用它盖掉新结果；
+- `lib/search.js` 按 `file` 缓存解析结果，失效条件是 `mtime + size` 都变了（会话被追加或被外部改写）；
+- 首次搜索是**异步流式解析**，不阻塞事件循环：实测搜索进行中并发请求 `/api/trash` 只需 14ms。
+
+片段安全：后端只返回 `{pre, hit, post}` 三段**纯文本**，前端 `esc()` 之后再拼 `<mark>`。后端不产出任何标签，所以会话正文里的尖括号永远进不了标签位置。
+
+搜思考内容时命中项标 `field:"think"`，点进去会**先展开那个折叠块**再滚动——否则滚过去只看到一行摘要，用户会以为没定位到。
+
+### 为什么不用倒排索引
+
+串行 `indexOf` 走 6361 条消息本身就在几十毫秒内（缓存命中后 10–20ms）。建倒排索引要额外处理增量更新、失效、落盘，复杂度远大于收益。等会话量涨到几千个再考虑。
+
+### 提问导航（`public/js/outline.js`）
+
+会话动辄上百条消息（实测最长 199 条），想回到「刚才问的那个问题」只能靠滚动。右下角悬浮按钮打开大纲，**只列用户提问**——回答太长且连续，列出来就是第二个正文，而人记话题时记得的是自己问过什么。
+
+少于 2 个提问时按钮自动隐藏（`display:none`），给一个只有一条的列表不如不给。
+
+快捷键 `Alt+↑` / `Alt+↓` 跳上/下一条提问。
+
+🔴 **坐标换算是这里最容易写错的地方**。`#chat` 是 `position:static`，`.msg` 的 `offsetParent` 会一路找到 `body`，`offsetTop` 里混进了 `#bar` 高度和页面偏移，与 `scrollTop` 不同量纲。直接拿 `offsetTop` 和 `scrollTop` 比较，结果是「按键完全没反应」（实测 `scrollTop` 恒为 14 不动）。正确做法是相对 `#chat` 的矩形差值再加回 `scrollTop`：
+
+```js
+function chatTopOf(el, chat) {
+  return el.getBoundingClientRect().top - chat.getBoundingClientRect().top + chat.scrollTop;
+}
+```
+
+另外要留 8px 容差：滚到某条提问时它的 top 正好等于 `scrollTop`，不设容差不按方向判定会原地不动。
+
+### 另外两处配套
+
+- **消息复制**：悬停消息右上角出现 `⧉`，复制正文 + 工具调用（不含思考，思考是旁注）。用事件委托绑定，不给每条消息挂监听——长会话有几百条，逐个绑会泄漏。
+- **时间筛选 + 会话规模**：`不限 / 今天 / 7 天 / 30 天` 按 mtime 过滤；顶栏显示「N 条 · 跨 X 小时」，跨度用首末消息时间算，不是「耗时」（中间可能隔几天没用，说耗时是错的）。
+
+🔴 **筛选 chip 必须带 `[data-t]` 选择器**。页面上有两组 `.tchip`（工具筛选 `#typebar` + 时间筛选 `#timebar`），`bindTypeChips` 原来用裸 `.tchip`，会把时间 chip 一起绑上，点击时 `dataset.t` 是 `undefined`，`state.typeFilter` 被写成 `undefined` → 所有会话都匹配不上，列表整片变空，而且切回标题模式也救不回来。`setTypeFilter` 里另加了 `if (!tool) return` 兜底。
+
 ## HTTP 接口
 
 | 方法 | 路径 | 说明 |
@@ -574,6 +627,7 @@ codex resume --no-daemon 01a200f5-aaac-7f70-82a1-b25059212597
 | GET | `/api/sessions?force=1` | 五家会话列表（按 mtime 倒序） |
 | GET | `/api/session?file=&tool=` | 单会话消息数组，每项 `{role,time,text,tool,think}`（`think` 为思考过程，可能为空串/缺失） |
 | GET | `/api/models` | 模型目录 + 思考强度档位 |
+| GET | `/api/search?q=&tool=&since=` | 全文搜索（正文 + 思考）。返回 `{q,took,total,truncated,results[]}`，每条结果含 `count` 与最多 6 个 `hits[{i,role,field,pre,hit,post}]`；`since` 为毫秒时间戳 |
 | GET | `/api/export?file=&tool=&title=&id=&cwd=` | 导出 Markdown |
 | POST | `/api/resume` | 在终端恢复会话 |
 | POST | `/api/new` | 在终端新建会话 |

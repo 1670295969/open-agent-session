@@ -6,6 +6,7 @@
 #   opensession-open --tab            退回普通浏览器标签页
 #   opensession-open --tool=claude    只打开 claude 的会话
 #   opensession-open --q=关键词        打开并预先搜索
+#   opensession-open --q=关键词 --full  以全文模式搜索（搜正文与思考，首次会慢 2–4 秒）
 #   opensession-open --noside         启动即收起左侧列表（正文占满窗口）
 #   OPENSESSION_WIN_W=1600 OPENSESSION_WIN_H=900 opensession-open
 #
@@ -53,6 +54,8 @@ for arg in "$@"; do
   case "$arg" in
     --tool=*) QS="${QS:+$QS&}tool=${arg#*=}" ;;
     --q=*)    QS="${QS:+$QS&}q=${arg#*=}" ;;
+    # 全文搜索：与 --q 同用才有效（没有关键词时无从搜起，页面会忽略）
+    --full)   QS="${QS:+$QS&}full=1" ;;
     --noside) QS="${QS:+$QS&}side=0" ;;
     --app)    MODE="app" ;;
     --tab)    MODE="tab" ;;

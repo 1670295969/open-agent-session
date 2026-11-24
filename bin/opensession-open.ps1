@@ -5,6 +5,7 @@
 #   .\opensession-open.ps1 -Tab             退回普通浏览器标签页
 #   .\opensession-open.ps1 -Tool claude     只打开 claude 的会话
 #   .\opensession-open.ps1 -Q 关键词         打开并预先搜索
+#   .\opensession-open.ps1 -Q 关键词 -Full   以全文模式搜索（搜正文与思考）
 #   .\opensession-open.ps1 -Stop            停止后端
 #   .\opensession-open.ps1 -Status          查看状态
 #
@@ -15,6 +16,7 @@
 param(
     [string]$Tool = "",
     [string]$Q = "",
+    [switch]$Full,
     [switch]$Tab,
     [switch]$Stop,
     [switch]$Status,
@@ -81,6 +83,7 @@ if ($Status) {
 $qs = @()
 if ($Tool) { $qs += "tool=$Tool" }
 if ($Q)    { $qs += "q=" + [Uri]::EscapeDataString($Q) }
+if ($Full) { $qs += "full=1" }
 $url = "http://127.0.0.1:$Port/"
 if ($qs.Count) { $url += "?" + ($qs -join "&") }
 
