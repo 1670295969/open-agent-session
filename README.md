@@ -572,6 +572,35 @@ codex resume --no-daemon 01a200f5-aaac-7f70-82a1-b25059212597
 
 注意 `claude` 扫描器的一个坑：`summary` 类型单独就能给出标题，所以提前退出条件必须是 `id && cwd && title && hasBody`。只判断前三个的话，"仅有 summary、无正文"的会话会被漏标成有内容。
 
+## 列表去重：子代理转录与重复文件（2026-11-25）
+
+现象：列表里同一个标题（如「你从哪判断的 acc 抖动」）连着出现三四条，时间不同、大小不同。
+
+**根因有两个，都必须处理**：
+
+### 1. 子代理转录被当成独立会话
+
+| 工具 | 落盘位置 | 文件里的会话 id |
+|---|---|---|
+| claude | `~/.claude/projects/<proj>/<sessionId>/subagents/agent-*.jsonl` | 每行都带**父会话**的 `sessionId` |
+| codex | `~/.codex/sessions/**/rollout-*.jsonl`，首条 `session_meta.payload.source.subagent` | `payload.session_id` = 父会话，`payload.id` = 自己 |
+
+这些是主代理用 Agent 工具派出去干活的分身，产出本来就在父会话的工具结果里。单独列出来只会变成同 id 的重复条目（实测 25 条冗余里，claude 7 个文件、codex 18 个）。
+
+- claude：扫描器打 `sub: isSub` 标记（路径含 `/subagents/`）
+- codex：只认**第一条** `session_meta`，看 `source.subagent` 打标记
+- 用户主动 `/fork` 的真会话带 `forked_from_id` / `parent_thread_id` 但**没有** `source.subagent`，正常保留
+
+🔴 **codex 必须只认第一条 `session_meta`**：0.171 起派生文件的写法是「先写自己那条（`id`=自己，`session_id`=父），紧接着把父会话的 `session_meta` 原样抄一遍」。原代码每遇一次就 `id = payload.id`，于是最后一条（父 id）胜出 —— 18 个文件全被标成父会话 id。
+
+### 2. 同一 (tool,id) 仍有多个文件
+
+codex 老版本 rollout 会被复制、会话中断重开后留下半截文件。`lib/sessions.js` 的 `dedupe()` 按 `(tool, id)` 收敛，保留**体积最大**的那个（最可能是完整转录），体积相同取 mtime 更新的。
+
+聚合层统一做，不让各家扫描器各删各的：去重规则只有一套，加新工具时只要保证 `id` 语义一致就自动生效。
+
+**验证**：168 条原始扫描 → 143 条唯一会话（去 25 条），`(tool,id)` 重复键 0；抽查 claude 三个受影响 id 均保留了主文件（`subagents/` 之外的 `<sessionId>.jsonl`）。
+
 ## 全文搜索与导航（2026-11-24）
 
 ### 搜索：标题 vs 全文
