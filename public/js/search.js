@@ -149,10 +149,25 @@ async function openHit(r, hit) {
      think 命中 → 展开思考块
      tool  命中 → 展开工具命令块 */
 function highlightMsg(i, field) {
-  const chat = $("#chat");
+  let chat = $("#chat");
   if (!chat) return;
+  // 命中 tool 字段就先把工具调用打开再渲染：隐藏状态下 details 根本不存在，
+  // 光滚过去是一张没有命令的卡片，等于没定位到。同时覆盖两种情况 —
+  // ① 这条消息只有命令（隐藏时整张卡片没渲染）② 有正文但命令块被摘掉了。
+  if (field === "tool" && state.toolOff) {
+    state.toolOff = false;
+    try { localStorage.setItem("opensession.toolOff", "0"); } catch {}
+    renderChat();
+    // 🔴 重绘后 #chat 是新的节点，必须重新取 —— 拿旧引用会找到已脱离文档的元素，
+    // scrollIntoView 无声无息什么都不做。
+    chat = $("#chat");
+    if (!chat) return;
+    const btn = $("#toolbtn");
+    if (btn) btn.classList.add("on");
+  }
   const el = chat.querySelector('.msg[data-i="' + i + '"]');
   if (!el) { toast("消息已变化（会话被追加过），请点 ↻ 刷新后重试"); return; }
+  // 其余折叠块（思考 / 命令）命中时展开那一条，否则只看到一行摘要
   if (field === "think") {
     const box = el.querySelector("details.think");
     if (box) box.open = true;

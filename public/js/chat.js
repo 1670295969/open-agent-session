@@ -53,17 +53,24 @@ function fmtMsgTime(t) {
   return (today ? "" : m[2] + "-" + m[3] + " ") + m[4] + ":" + m[5];
 }
 
-/* cont = 上一条也是助手，属于同一轮里的后续动作。
-   助手一次回答常被拆成「一句话 + 一串工具调用」（实测某会话连续 5 条），
-   每条都重印「助手 18:02:18」会糊成一片。cont 的消息不画角色行，
-   只在组首标一次时间，读起来才像「一次回答里的几个步骤」。 */
-/* 工具调用：默认只显示一行摘要 chip，点开才露出完整命令。
-   🔴 为什么需要折叠：shell 的 for/if 多行脚本、几十个参数的长命令，
-   摘要被 firstText 压成单行截到 70 字后根本看不出干了什么；
-   真正要核对（或复制给同事）的是原文。
-   折叠用原生 <details>：键盘可用、展开状态不用自己维护，和思考块一致。
-   没有 m.toolFull 时（摘要已装得下）就不画 details —— 少一次点击。 */
+/* 这条消息渲染出来会不会是一张空卡片。
+   隐藏工具调用后，「只调了个工具、没说话」的消息会只剩一个角色行，白占一张卡片。
+   实测全库 9546 条消息里 3915 条除工具调用外什么都没有 —— 不过滤就是 3915 张空卡。
+   判断要和 msgHtml 里实际渲染的三个部分（text / think / tool）严格对齐，否则会误删有内容的行。 */
+function msgEmpty(m) {
+  if (!m) return true;
+  if (m.text) return false;
+  if (m.think) return false;
+  if (m.tool && !state.toolOff) return false;
+  return true;
+}
+
+/* 工具调用：默认整块不显示，顶栏「⚙ 命令」打开才铺出来。
+   🔴 为什么默认隐藏：一次回答背后常挂着十几个 exec_command / write_stdin，
+   实测全库 7319 条带工具调用的消息里 3915 条除了调用什么都没有，
+   铺在正文里等于把答案淹了。打开后每条只显示一行摘要 chip，点开才看完整命令。 */
 function toolHtml(m) {
+  if (state.toolOff) return "";
   if (!m.tool) return "";
   const chip = '<span class="toolchip">⚙ ' + esc(m.tool) + "</span>";
   if (!Array.isArray(m.toolFull) || !m.toolFull.length) return chip;
@@ -126,10 +133,14 @@ function msgHtml(m, cont, end, idx) {
    放在 cwd 行里而不是新加一行 —— #bar 已经两行（cwd / 命令），
    再加一行会把固定栏压得很高，正文可见区域变小。
    时间跨度用「首次→末次」而不是「耗时」：中间可能隔了好几天没用，
-   说耗时是错的，只有首末时间是真事实。 */
-function spanHtml(msgs) {
-  if (!msgs.length) return "";
-  const times = msgs.map((m) => m.time).filter(Boolean).sort();
+   说耗时是错的，只有首末时间是真事实。
+   隐藏工具调用时条数按**看得见的**算 —— 顶上写「139 条」而正文只有几十张卡片，
+   用户会以为渲染漏了。原始条数放进 title，要核对时悬停即可。
+   🔴 时间跨度仍用**全部**消息算：跨度描述的是「这段会话活跃了多久」，
+   工具调用也是真实发生过的动作，按可见消息算会把首尾削掉。 */
+function spanHtml(visible, all) {
+  if (!visible.length) return "";
+  const times = all.map((m) => m.time).filter(Boolean).sort();
   let span = "";
   if (times.length >= 2) {
     const a = new Date(String(times[0]).replace(" ", "T"));
@@ -143,8 +154,10 @@ function spanHtml(msgs) {
       span = " · 跨 " + fmt(d);
     }
   }
-  return '<span class="cwdmeta" title="消息条数与首次到末次的时间跨度">' +
-    msgs.length + " 条" + span + "</span>";
+  const hidden = all.length > visible.length
+    ? "（全文共 " + all.length + " 条原始记录）" : "";
+  return '<span class="cwdmeta" title="消息条数与首次到末次的时间跨度' + hidden + '">' +
+    visible.length + " 条" + span + "</span>";
 }
 
 function renderChat() {
@@ -166,14 +179,30 @@ function renderChat() {
       '</div>';
   // 连续助手消息归成一组：组内不重复画角色行，只在组首标一次。
   // 用户消息永远独立成块（问题本身就是一块，不跟上一轮混）。
-  const html = msgs.map((m, i) => {
-    const prev = msgs[i - 1], next = msgs[i + 1];
-    const cont = !!prev && m.role === "assistant" && prev.role === "assistant";
+  // 🔴 隐藏工具调用后，「只有工具调用、没有正文和思考」的消息会变成一张空卡片
+  // （只剩角色行），必须先滤掉再算 cont/end —— 否则分组间距按不存在的消息走，
+  // 正文之间会冒出莫名其妙的空白。data-i 仍用原始序号，搜索定位不能错位。
+  const visible = [];
+  for (let i = 0; i < msgs.length; i++) if (!msgEmpty(msgs[i])) visible.push({ m: msgs[i], i });
+  const html = visible.map((it, k) => {
+    const prev = visible[k - 1], next = visible[k + 1];
+    const cont = !!prev && it.m.role === "assistant" && prev.m.role === "assistant";
     // 组尾：下一条不是助手了，这条才拿回正常的大间距，把轮次分开
-    const end = !next || next.role !== "assistant" || !!next.sidechain;
-    return msgHtml(m, cont, end, i);
+    const end = !next || next.m.role !== "assistant" || !!next.m.sidechain;
+    return msgHtml(it.m, cont, end, it.i);
   }).join("");
-  const chat = '<div id="chat">' + html + emptyHint + "</div>";
+
+  // 工具调用条数：顶栏按钮上标个数字，隐藏时用户才知道「下面到底有没有东西」
+  const toolN = msgs.reduce((n, m) => n + (m.tool ? 1 : 0), 0);
+  // 全部消息都被滤掉（只有工具调用）时不能留白页 —— 说清楚为什么空、怎么切回去
+  const onlyTools = !visible.length && toolN > 0
+    ? '<div class="emptyhint">' +
+        '<div class="eh-title">本会话只有工具调用</div>' +
+        '<div class="eh-body">这段记录里没有用户提问和助手回复，只有 ' + toolN +
+        ' 次工具调用（命令 / 读写文件）。<br>工具调用默认隐藏，点右上角 <b>⚙ 命令</b> 可以展开查看。' +
+        '</div></div>'
+    : "";
+  const chat = '<div id="chat">' + html + (visible.length ? "" : onlyTools || emptyHint) + "</div>";
 
   const embedOn = state.embedOpen && isEmbeddable(s);
   const badge = isEmbeddable(s)
@@ -185,8 +214,12 @@ function renderChat() {
       '<div class="cwd">' +
         '<span class="cwdpath" title="' + escAttr(s.cwd || "") + '">📁 ' +
           esc(s.cwd || "(未知目录)") + '</span>' +
-        badge + spanHtml(msgs) + '</div>' +
+        badge + spanHtml(visible.map((it) => it.m), msgs) + '</div>' +
       '<div class="cmd">' + cmdPrompt() + ' ' + esc(s.resumeCmd) + '</div></div>' +
+      '<button id="toolbtn" class="' + (state.toolOff ? "" : "on") + '" onclick="toggleTools(this)" ' +
+        'title="显示 / 隐藏正文里的工具调用（本会话共 ' + toolN + ' 条）">⚙ 命令' +
+        (state.toolOff && toolN ? ' <span class="btnnum">' + (toolN > 99 ? "99+" : toolN) + '</span>' : "") +
+        '</button>' +
       '<button id="mdbtn" class="' + (state.mdOff ? "" : "on") + '" onclick="toggleMd(this)" ' +
         'title="切换 Markdown 渲染 / 纯文本">M↓ Markdown</button>' +
       '<button onclick="reloadActive(this)" title="重新读取本会话">↻ 刷新</button>' +
@@ -276,6 +309,17 @@ function fallbackCopy(text, done) {
 function scrollChatBottom() {
   const chat = $("#chat");
   if (chat) chat.scrollTop = chat.scrollHeight;
+}
+
+// ---- 工具调用开关 ----
+// 默认隐藏：正文只看「人话」。想核对某一步执行了什么时点开。
+// 偏好存 localStorage（和侧栏折叠一致），下次打开还是同一套读法。
+function toggleTools(btn) {
+  state.toolOff = !state.toolOff;
+  if (btn) btn.classList.toggle("on", !state.toolOff);
+  try { localStorage.setItem("opensession.toolOff", state.toolOff ? "1" : "0"); } catch {}
+  renderChat();
+  toast(state.toolOff ? "已隐藏工具调用" : "已显示工具调用");
 }
 
 // ---- Markdown 开关 ----

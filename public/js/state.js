@@ -17,6 +17,9 @@ const state = {
   selectMode: false, // 多选删除模式
   selected: new Set(), // 已勾选的 file 集合
   mdOff: false,      // 正文是否关闭 Markdown 渲染（退回纯文本）
+  // 工具调用（⚙ exec_command…）是否隐藏。默认隐藏：一次回答背后常有十几个
+  // write_stdin / exec_command，铺在正文里把答案淹了。顶栏「⚙ 命令」可切回显示。
+  toolOff: true,
   sideCollapsed: false, // 左侧列表是否折叠（localStorage 记住偏好）
   // 搜索：title = 只匹配标题/cwd（本地过滤，即时）；full = 服务端全文搜索
   searchMode: "title",

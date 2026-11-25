@@ -342,7 +342,13 @@ body.has-input #outline { bottom: 148px; }
   box-shadow: 0 1px 0 rgba(0, 0, 0, .28), 0 6px 16px -12px rgba(0, 0, 0, .9);
   z-index: 4;
 }
-#bar .info { flex: 1 1 340px; min-width: 240px; overflow: hidden; }
+/* flex-basis 是「这一行至少想占多宽」。它决定的是**换行时机**：
+   数值越大，按钮越早被挤到下一行。
+   2026-11-25 加了「⚙ 命令」后，1500px 窗口（正文 1100px）从 2 行变 3 行 ——
+   因为 340 + 按钮总宽 760 超过了可用的 1056。把 basis 降到 240，
+   info 先被压缩（路径和恢复命令本来就有省略号），按钮保持一排。
+   🔴 这里每加一个顶栏按钮都要重新量一遍：按钮合计 697px，剩多少给 info 是硬账。 */
+#bar .info { flex: 1 1 240px; min-width: 200px; overflow: hidden; }
 #bar button { flex-shrink: 0; white-space: nowrap; font-size: 13.5px; padding: 6px 13px; }
 #bar .cwd {
   display: flex; align-items: center; gap: 7px; min-width: 0;
@@ -658,6 +664,16 @@ button.primary:hover { background: linear-gradient(180deg, #4681d8, #3070c4); bo
 
 /* Markdown 开关 */
 #mdbtn.on { background: var(--accent); border-color: var(--accent); color: #12161d; font-weight: 600; }
+/* 工具调用开关：默认关（正文里不铺 exec_command）。
+   按钮上的数字是隐藏次数 —— 不标数字的话，用户看不出「这段会话有没有命令可看」，
+   要么永远不敢点，要么每次都要点一下试探。 */
+#toolbtn.on { background: var(--accent); border-color: var(--accent); color: #12161d; font-weight: 600; }
+#toolbtn .btnnum {
+  margin-left: 3px; padding: 0 5px; border-radius: 8px;
+  font-size: 11px; font-variant-numeric: tabular-nums;
+  background: rgba(255, 255, 255, .1); color: #9aa4b4;
+}
+#toolbtn.on .btnnum { background: rgba(0, 0, 0, .22); color: #1a1f27; }
 /* 纯文本模式：保留原始换行与缩进（.raw 是气泡内的子 div，流式消息则直接是气泡本身） */
 .bubble.raw, .bubble .raw { white-space: pre-wrap; font-family: inherit; }
 

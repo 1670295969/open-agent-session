@@ -6,6 +6,8 @@
 // #side 折叠后会被推出视口，但 #main 的内容是反复整体重绘的，
 // 状态类只能放在比它们都高的节点上，重绘才不会把状态冲掉。
 const SIDE_KEY = "opensession.sideCollapsed";
+// 工具调用的显示偏好：默认隐藏（1），用户点开过「⚙ 命令」就记住显示（0）
+const TOOL_KEY = "opensession.toolOff";
 
 function applySideCollapsed(on, save) {
   state.sideCollapsed = !!on;
@@ -94,8 +96,17 @@ function loadEnv() {
     .catch(() => {});
 }
 
+function initToolPref() {
+  try {
+    const v = localStorage.getItem(TOOL_KEY);
+    // 默认隐藏（toolOff=true）。只有明确存过 "0" 才显示。
+    if (v === "0") state.toolOff = false;
+  } catch {}
+}
+
 function boot() {
   initSide();
+  initToolPref();
   applyUrlPrefs();
   loadEnv();
   bindSearch();
