@@ -256,6 +256,14 @@ html.side-collapsed #bar { padding-left: 108px; }
 .sitem .shit:hover { background: rgba(0, 0, 0, .34); color: #d5dae3; }
 /* 用户提问的命中偏蓝，助手回答偏灰：一眼能分辨「我说过的」和「它说过的」 */
 .sitem .shit.huser { border-left-color: var(--accent); }
+/* 命令命中的左侧条偏琥珀：那不是谁说的话，是工具执行的命令 */
+.sitem .shit.htool { border-left-color: #8a7434; }
+/* 片段来源标签（思考 / 命令）。正文的命中不加标签，避免每条都挂个「正文」 */
+.sitem .sfl {
+  display: inline-block; margin-right: 6px; padding: 0 5px; border-radius: 3px;
+  background: rgba(255, 255, 255, .07); color: #8f97a3;
+  font-size: 10.5px; font-family: var(--mono); vertical-align: 1px;
+}
 .sitem .shit mark {
   background: rgba(255, 200, 80, .26); color: #ffd98a;
   padding: 0 1px; border-radius: 2px; font-weight: 600;
@@ -662,6 +670,65 @@ button.primary:hover { background: linear-gradient(180deg, #4681d8, #3070c4); bo
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: default;
 }
 .toolchip:hover { border-color: var(--line); color: #b0c0d8; }
+
+/* ---------- 工具调用：可折叠的完整命令 ---------- */
+/* 摘要 chip 只是「这是 run_script(...)」的标签；真实命令（多行 shell、
+   一长串参数）点开才看。没有原文时只渲染 chip，不画 details。 */
+details.toolcall { margin-top: 9px; max-width: var(--read-w); }
+/* summary 本身就是那一行 chip，别再叠一层外框，否则看起来像两个组件 */
+details.toolcall > summary {
+  list-style: none; cursor: pointer; display: flex; align-items: center;
+  gap: 7px; width: fit-content; max-width: 100%;
+}
+details.toolcall > summary::-webkit-details-marker { display: none; }
+details.toolcall > summary::before {
+  content: "▸"; font-size: 10px; color: #7d848f;
+}
+details.toolcall[open] > summary::before { content: "▾"; }
+/* chip 在 summary 里不再自带外边距，否则展开时行高会跳 */
+details.toolcall > summary .toolchip { margin-top: 0; }
+details.toolcall > summary:hover .toolchip { border-color: var(--line); color: #b0c0dc; }
+details.toolcall .tfcount {
+  font-size: 11.5px; color: #7d848f; font-family: var(--mono);
+  white-space: nowrap; user-select: none;
+}
+details.toolcall[open] > summary .toolchip { border-color: var(--line); color: #c3d0e4; }
+
+/* 展开区：比正文更低一级（虚线 + 更暗的底），和思考块保持同一套视觉语言 */
+details.toolcall .tfold {
+  margin-top: 7px; border: 1px dashed var(--line-soft); border-radius: var(--r-md);
+  background: rgba(255, 255, 255, .018); overflow: hidden;
+}
+/* 单条命令时块头只有「字数 + 复制」，做成贴右的细条，不占一整行视觉重量 */
+details.toolcall .tfblock + .tfblock { border-top: 1px dashed var(--line-soft); }
+details.toolcall .tfhead {
+  display: flex; align-items: center; gap: 8px; padding: 5px 11px 0;
+  font-size: 12px;
+}
+details.toolcall .tfhead b {
+  font-family: var(--mono); color: #a9bcd6; font-weight: 600;
+}
+details.toolcall .tfmeta {
+  font-family: var(--mono); font-size: 11px; color: #7d848f;
+  font-variant-numeric: tabular-nums;
+}
+details.toolcall .tfcopy {
+  margin-left: auto; padding: 1px 8px; font-size: 11.5px; border-radius: var(--r-pill);
+  background: transparent; border: 1px solid var(--line-soft); color: #8a92a0;
+}
+details.toolcall .tfcopy:hover { color: #cfd6e0; border-color: var(--line); }
+/* 单条命令时块头只有复制按钮：贴右、再小一号，避免和上方 chip 抢视觉重量 */
+details.toolcall .tfblock:only-child .tfhead { padding: 4px 8px 0; }
+/* 命令原文：保留换行与缩进（这是要看的东西），长行折行而不出横向滚动条 ——
+   横向滚动条会变成第二层滚动，和「正文整页滚动」的取向冲突。
+   但纵向必须限高：实测一条命令能到 50 行 / 1100px，展开后正文直接被顶出屏幕。
+   限高走内部纵向滚动，与思考块 .tbody 的 46vh 保持同一套做法。 */
+details.toolcall .tfbody {
+  margin: 0; padding: 10px 12px; font-family: var(--mono); font-size: 12.5px;
+  line-height: 1.65; color: #b6c2d4; white-space: pre-wrap;
+  overflow-wrap: anywhere; tab-size: 2;
+  max-height: 42vh; overflow-y: auto; overflow-x: hidden;
+}
 
 /* 会话无正文时的解释卡片 */
 .emptyhint {

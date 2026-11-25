@@ -87,9 +87,13 @@ async function runFullSearch() {
 }
 
 /* 命中片段：后端给的是 {pre, hit, post} 三段**纯文本**，
-   这里先 esc 再拼 <mark>，会话内容里的尖括号永远进不了标签位置。 */
+   这里先 esc 再拼 <mark>，会话内容里的尖括号永远进不了标签位置。
+   片段的来源（正文 / 思考 / 命令）补一个小标签 —— 否则搜到「命令」里的命中时，
+   用户看着一段脚本片段会以为那是助手说的话。 */
 function snippetHtml(h) {
-  return '<div class="snippet">' + esc(h.pre) +
+  const tag = h.fieldLabel
+    ? '<span class="sfl">' + esc(h.fieldLabel) + '</span>' : "";
+  return '<div class="snippet">' + tag + esc(h.pre) +
     '<mark>' + esc(h.hit) + '</mark>' + esc(h.post) + '</div>';
 }
 
@@ -108,7 +112,8 @@ function searchItemEl(r) {
       ' · ' + esc(shortCwd(r.cwd || "")) + '</div>';
 
   const hits = r.hits.map((h, k) =>
-    '<div class="shit' + (h.role === "user" ? " huser" : "") + '" data-k="' + k + '">' +
+    '<div class="shit' + (h.role === "user" ? " huser" : "") +
+      (h.field === "tool" ? " htool" : "") + '" data-k="' + k + '">' +
       snippetHtml(h) +
     '</div>').join("");
 
@@ -140,7 +145,9 @@ async function openHit(r, hit) {
 
 /* 滚动到第 i 条消息并闪一下。
    给该消息临时加 .hitflash（CSS 动画 1.6s 后自然消失，不用手动清类）。
-   思考命中时先展开折叠块 —— 否则滚过去只看到一行摘要，用户以为没定位到。 */
+   命中折叠内容时必须先展开 —— 否则滚过去只看到一行摘要，用户以为没定位到：
+     think 命中 → 展开思考块
+     tool  命中 → 展开工具命令块 */
 function highlightMsg(i, field) {
   const chat = $("#chat");
   if (!chat) return;
@@ -148,6 +155,9 @@ function highlightMsg(i, field) {
   if (!el) { toast("消息已变化（会话被追加过），请点 ↻ 刷新后重试"); return; }
   if (field === "think") {
     const box = el.querySelector("details.think");
+    if (box) box.open = true;
+  } else if (field === "tool") {
+    const box = el.querySelector("details.toolcall");
     if (box) box.open = true;
   }
   el.scrollIntoView({ block: "center", behavior: "smooth" });

@@ -261,7 +261,7 @@ opensession/
 │   │   └── hermes.js               ~/.hermes/webui/sessions + ~/.hermes/sessions
 │   ├── zstd.js                  多帧 zstd 解压（Node 内置只解第一帧，见下文）
 │   ├── parsers/
-│   │   └── index.js                正文解析 → 统一消息结构 {role,time,text,tool,think}
+│   │   └── index.js                正文解析 → 统一消息结构 {role,time,text,tool,think,toolFull?}
 │   └── embed/                   页面内会话（恢复 / 新建，SSE 流式）
 │       ├── index.js                SSE 骨架 + 子进程生命周期
 │       └── adapters/            各工具的参数拼装与输出解析
@@ -579,9 +579,9 @@ codex resume --no-daemon 01a200f5-aaac-7f70-82a1-b25059212597
 | 模式 | 实现 | 速度 | 搜什么 |
 |---|---|---|---|
 | 标题 | 前端过滤已加载列表 | 即时 | 标题 + cwd |
-| 全文 | `GET /api/search` → `lib/search.js` | 首次 2–4s，之后 10–20ms | 消息正文 + 思考内容 |
+| 全文 | `GET /api/search` → `lib/search.js` | 首次 2–4s，之后 10–20ms | 消息正文 + 思考内容 + 工具命令 |
 
-默认标题模式不是偷懒，是**性能边界**：全文要把全部会话文件解析一遍。实测 161 个会话、原始 184MB、正文约 7MB，冷启动 3.2s（同步串行解析 6361 条消息）。每敲一个字符触发一次会让输入明显发卡，所以：
+默认标题模式不是偷懒，是**性能边界**：全文要把全部会话文件解析一遍。实测 171 个会话、原始 225MB、正文约 7MB，冷启动 3.2s（同步串行解析 9513 条消息）。每敲一个字符触发一次会让输入明显发卡，所以：
 
 - 全文模式走 320ms 防抖 + 请求序号（`state.searchSeq`）丢弃过期响应——连打关键字时先发的慢请求可能后到，不丢序号会用它盖掉新结果；
 - `lib/search.js` 按 `file` 缓存解析结果，失效条件是 `mtime + size` 都变了（会话被追加或被外部改写）；
@@ -589,7 +589,9 @@ codex resume --no-daemon 01a200f5-aaac-7f70-82a1-b25059212597
 
 片段安全：后端只返回 `{pre, hit, post}` 三段**纯文本**，前端 `esc()` 之后再拼 `<mark>`。后端不产出任何标签，所以会话正文里的尖括号永远进不了标签位置。
 
-搜思考内容时命中项标 `field:"think"`，点进去会**先展开那个折叠块**再滚动——否则滚过去只看到一行摘要，用户会以为没定位到。
+搜思考内容时命中项标 `field:"think"`，点进去会**先展开那个折叠块**再滚动——否则滚过去只看到一行摘要，用户会以为没定位到。命令命中同理解开 `details.toolcall`（`field:"tool"`）。
+
+片段来源在 `fieldLabel` 里（`思考` / `命令`，正文为空），前端渲染成小标签。不标的话，搜到命令里的片段时用户会以为那是助手说的话。
 
 ### 为什么不用倒排索引
 
@@ -620,14 +622,53 @@ function chatTopOf(el, chat) {
 
 🔴 **筛选 chip 必须带 `[data-t]` 选择器**。页面上有两组 `.tchip`（工具筛选 `#typebar` + 时间筛选 `#timebar`），`bindTypeChips` 原来用裸 `.tchip`，会把时间 chip 一起绑上，点击时 `dataset.t` 是 `undefined`，`state.typeFilter` 被写成 `undefined` → 所有会话都匹配不上，列表整片变空，而且切回标题模式也救不回来。`setTypeFilter` 里另加了 `if (!tool) return` 兜底。
 
+## 工具调用折叠（2026-11-25）
+
+工具调用默认只显示一行 chip，点开才看完整命令原文。
+
+### 为什么必须另存 `toolFull`，而不是放宽 chip 的截断上限
+
+`toolHint()` 用 `firstText(JSON.stringify(hint), 70)` 生成摘要。这个函数做两件事：**把 `\s+` 压成单空格**、截到 70 字。所以直接在 `m.tool` 上放宽上限是错的：
+
+1. 压缩空白把多行 shell 脚本压成一行乱麻，展开后看到的仍然不是原命令；
+2. `m.tool` 是既有契约——chip 摘要、全文搜索命中、导出 MD、单条复制都在读它。把长命令塞进去会让列表 chip 撑爆、搜索片段被大段脚本淹没。
+
+新增 `toolFull: [{name, body}]` 与之并列，只在「摘要装不下」时写入（`withFull()` 会过滤掉 null 并跳过空数组）。实测 7869 次调用里 6487 条需要折叠。
+
+### 判定「要不要给折叠入口」
+
+```js
+const need = isCmd ? (s.includes("\n") || s.length > 60) : s.length > 120;
+```
+
+- 有 `cmd` / `command` 字段 → 命令原文（保住换行），多行或超 60 字才折叠；
+- 只有单个 `file_path` → 摘要已经完整，返回 null，不折叠；
+- 其他（子代理参数、多字段编辑）→ 整个参数对象的 `JSON.stringify(a, null, 2)`，超 120 字才折叠。
+
+实测 6888/7869 条摘要不足 200 字，大多一眼能看全。给这些也加折叠箭头只是多一次点击。
+
+单个调用上限 `MAX_TOOL_CHARS = 8000`。实测 7869 次调用含换行的 878 条、超 8000 字的 0 条，全库增量约 1.8MB，单会话最大 296KB（`解析一下xlog`）。
+
+### 布局约束
+
+🔴 **展开区必须限高**。实测一条命令 50 行 / 1100px，不限高展开后整段正文被顶出屏幕。`max-height: 42vh` + 内部纵向滚动，与思考块 `.tbody` 的 46vh 同一套做法。
+
+横向不能出滚动条（会变成第二层滚动，与「正文整页滚动」冲突），用 `white-space: pre-wrap` + `overflow-wrap: anywhere` 折行。
+
+单条命令时块头**不重复函数名**——summary 那行 chip 已经写了 `exec_command("…")`，展开后再顶一遍同名标题纯属重复占位。此时块头只剩贴右的「⧉ 复制命令」。
+
+### 事件委托的先后顺序
+
+命令块的复制按钮 `.tfcopy` 必须**先于** `.msgcopy` 判断，否则会被当成「复制整条消息」。另外要点 `preventDefault()` + `stopPropagation()`：按钮在 `<details>` 里，不拦的话点复制会顺手把折叠块收起来，复制完内容就看不见了。
+
 ## HTTP 接口
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | `/api/sessions?force=1` | 五家会话列表（按 mtime 倒序） |
-| GET | `/api/session?file=&tool=` | 单会话消息数组，每项 `{role,time,text,tool,think}`（`think` 为思考过程，可能为空串/缺失） |
+| GET | `/api/session?file=&tool=` | 单会话消息数组，每项 `{role,time,text,tool,think,toolFull?}`（`think` 为思考过程，可能为空串/缺失；`toolFull` 为完整命令，仅摘要装不下时存在） |
 | GET | `/api/models` | 模型目录 + 思考强度档位 |
-| GET | `/api/search?q=&tool=&since=` | 全文搜索（正文 + 思考）。返回 `{q,took,total,truncated,results[]}`，每条结果含 `count` 与最多 6 个 `hits[{i,role,field,pre,hit,post}]`；`since` 为毫秒时间戳 |
+| GET | `/api/search?q=&tool=&since=` | 全文搜索（正文 + 思考 + 命令）。返回 `{q,took,total,truncated,results[]}`，每条结果含 `count` 与最多 6 个 `hits[{i,role,field,fieldLabel,pre,hit,post}]`；`field` 为 `text`/`think`/`tool`，`since` 为毫秒时间戳 |
 | GET | `/api/export?file=&tool=&title=&id=&cwd=` | 导出 Markdown |
 | POST | `/api/resume` | 在终端恢复会话 |
 | POST | `/api/new` | 在终端新建会话 |

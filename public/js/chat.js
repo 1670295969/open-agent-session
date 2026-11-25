@@ -57,9 +57,45 @@ function fmtMsgTime(t) {
    助手一次回答常被拆成「一句话 + 一串工具调用」（实测某会话连续 5 条），
    每条都重印「助手 18:02:18」会糊成一片。cont 的消息不画角色行，
    只在组首标一次时间，读起来才像「一次回答里的几个步骤」。 */
+/* 工具调用：默认只显示一行摘要 chip，点开才露出完整命令。
+   🔴 为什么需要折叠：shell 的 for/if 多行脚本、几十个参数的长命令，
+   摘要被 firstText 压成单行截到 70 字后根本看不出干了什么；
+   真正要核对（或复制给同事）的是原文。
+   折叠用原生 <details>：键盘可用、展开状态不用自己维护，和思考块一致。
+   没有 m.toolFull 时（摘要已装得下）就不画 details —— 少一次点击。 */
+function toolHtml(m) {
+  if (!m.tool) return "";
+  const chip = '<span class="toolchip">⚙ ' + esc(m.tool) + "</span>";
+  if (!Array.isArray(m.toolFull) || !m.toolFull.length) return chip;
+
+  // 每个完整命令一块：名字 + 复制按钮 + 保留缩进的原文。
+  // 只有 1 条时省掉块头里的函数名 —— summary 那行 chip 已经写了
+  // `exec_command("…")`，展开后再顶一遍同名标题纯属重复占位。
+  const blocks = m.toolFull.map((f, k) => {
+    const title = m.toolFull.length > 1
+      ? '<div class="tfhead"><b>' + esc(f.name) + '</b>'
+          + '<span class="tfmeta">' + f.body.length + ' 字</span>'
+          + '<button class="tfcopy" data-k="' + k + '" title="复制这段命令原文">⧉ 复制</button></div>'
+      : '<div class="tfhead"><button class="tfcopy" data-k="' + k +
+          '" title="复制这段命令原文">⧉ 复制命令</button></div>';
+    return '<div class="tfblock">' + title +
+      '<pre class="tfbody">' + esc(f.body) + '</pre></div>';
+  }).join("");
+
+  // 多个调用时 summary 里补个数量，否则展开后对不上「哪来的三条」
+  const more = m.toolFull.length > 1
+    ? '<span class="tfcount">展开 ' + m.toolFull.length + ' 条命令</span>' : "";
+  return '<details class="toolcall">' +
+      '<summary>' + chip + more + '</summary>' +
+      '<div class="tfold">' + blocks + '</div>' +
+    '</details>';
+}
+
+/* cont = 上一条也是助手，属于同一轮里的后续动作。
+   助手一次回答常被拆成「一句话 + 一串工具调用」（实测某会话连续 5 条），
+   每条都重印「助手 18:02:18」会糊成一片。cont 的消息不画角色行，
+   只在组首标一次时间，读起来才像「一次回答里的几个步骤」。 */
 function msgHtml(m, cont, end, idx) {
-  const toolHtml = m.tool
-    ? '<div class="toolchip" title="' + escAttr(m.tool) + '">⚙ ' + esc(m.tool) + "</div>" : "";
   const sc = m.sidechain ? " sidechain" : "";
   const role = m.role === "user" ? "用户" : "助手";
   const rawTime = m.time ? String(m.time).replace("T", " ") : "";
@@ -82,7 +118,7 @@ function msgHtml(m, cont, end, idx) {
   return '<div class="' + cls + '"' + di + ">" +
       '<button class="msgcopy" title="复制这条消息的原文">⧉</button>' +
       who + thinkHtml(m.think) +
-      (body ? '<div class="bubble md">' + body + "</div>" : "") + toolHtml +
+      (body ? '<div class="bubble md">' + body + "</div>" : "") + toolHtml(m) +
     "</div>";
 }
 
@@ -178,6 +214,20 @@ function renderChat() {
 // 用事件委托而不是给每个按钮绑 onclick：#chat 每次重绘都整体重建，
 // 逐个绑会在长会话里挂上几百个监听，且重绘后旧引用全部泄漏。
 document.addEventListener("click", (e) => {
+  // 工具命令块的复制按钮：先判它，否则会被下面的 .msgcopy 逻辑当成整条消息复制
+  const tc = e.target.closest(".tfcopy");
+  if (tc) {
+    e.stopPropagation();   // 别让点击冒泡到 <summary>，否则一复制就顺手折叠/展开
+    e.preventDefault();
+    const wrap = tc.closest(".msg");
+    const i = wrap ? Number(wrap.dataset.i) : -1;
+    const m = (state.msgs || [])[i];
+    const k = Number(tc.dataset.k);
+    const f = m && Array.isArray(m.toolFull) ? m.toolFull[k] : null;
+    if (!f) return;
+    copyText(f.body, "已复制命令原文");
+    return;
+  }
   const btn = e.target.closest(".msgcopy");
   if (!btn) return;
   e.stopPropagation();
@@ -187,18 +237,29 @@ document.addEventListener("click", (e) => {
   if (!m) return;
   // 复制「原文」：正文 + 工具调用，不带思考（思考是旁注，混进去反而不好用）。
   // 想看思考就展开后手动选中。
+  // 工具有完整命令时用原文而不是 chip 里那个 70 字摘要 —— 复制出去就是要能直接跑的。
   const parts = [];
   if (m.text) parts.push(m.text);
-  if (m.tool) parts.push("⚙ " + m.tool);
+  if (Array.isArray(m.toolFull) && m.toolFull.length) {
+    parts.push(m.toolFull.map((f) => "⚙ " + f.name + ":\n" + f.body).join("\n\n"));
+  } else if (m.tool) {
+    parts.push("⚙ " + m.tool);
+  }
   const text = parts.join("\n\n");
   if (!text) { toast("这条消息只有思考内容，展开后可手动选中复制"); return; }
-  const done = () => toast("已复制这条消息");
+  copyText(text, "已复制这条消息");
+});
+
+// 复制并提示（剪贴板 API 不可用时自动退回 execCommand）
+function copyText(text, okMsg) {
+  if (!text) return;
+  const done = () => toast(okMsg);
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
   } else {
     fallbackCopy(text, done);
   }
-});
+}
 
 // 非安全上下文（http 且非 localhost）下 clipboard API 不可用，退回到 execCommand
 function fallbackCopy(text, done) {
