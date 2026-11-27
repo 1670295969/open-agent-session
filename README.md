@@ -339,19 +339,27 @@ opensession/
 │   └── embed/                   页面内会话（恢复 / 新建，SSE 流式）
 │       ├── index.js                SSE 骨架 + 子进程生命周期
 │       └── adapters/            各工具的参数拼装与输出解析
-│           ├── claude.js               stream-json 逐行解析 text 块
-│           ├── codex.js                prompt 走 stdin（`-`），stdout 直接转发
-│           ├── pi.js                   按行流式（防 UTF-8 截断）
-│           └── dsh.js                  NDJSON：session / text / status / final，消息走 stdin（`-`）
+│   │       ├── claude.js               stream-json 逐行解析 text 块
+│   │       ├── codex.js                prompt 走 stdin（`-`），stdout 直接转发
+│   │       ├── pi.js                   按行流式（防 UTF-8 截断）
+│   │       └── dsh.js                  NDJSON：session / text / status / final，消息走 stdin（`-`）
+│   └── gateway/                 本地 AI 网关（供应商池 + 协议翻译，见「网关」一节）
+│       ├── store.js                供应商 / 路由组 / 设置 / 用量；按 mtime 重读
+│       ├── translate.js            canonical(OpenAI Chat) ⇄ chat / responses / anthropic
+│       ├── proxy.js                转发 + 流式状态机（幂等收尾、usage 合并、SSE 分帧）
+│       ├── agents.js               写 claude / codex / pi 配置（备份 + 形状校验 + 还原）
+│       └── api.js                  /api/gw/* 管理接口
 └── public/                      前端
     ├── index.html               骨架
     ├── app.css                  样式
+    ├── gateway.css              网关全屏视图样式（桌面/900/640 三档）
     ├── favicon.svg              图标的唯一设计源（桌面/ICO/ICNS/PWA 全从这里派生）
     ├── manifest.webmanifest     PWA 清单：装成独立 App 时用
     ├── sw.js                    service worker，不缓存任何内容（只为满足可安装条件）
     ├── icons/                   icon-{32,48,128,192,256,512}.png，由 tools/make-icon.py 生成
     └── js/
         ├── state.js             全局状态 + 格式化工具（含平台相关文案）
+        ├── gateway.js           网关五个页签：供应商 / 路由组 / Agent 指向 / 用量 / 接入
         ├── md.js                轻量 Markdown 渲染（零依赖，先转义再解析）
         ├── list.js              左侧列表：筛选、统一分页、分组渲染、全局刷新
         ├── search.js            全文搜索：模式切换、防抖、结果片段、命中定位
@@ -900,6 +908,114 @@ const need = isCmd ? (s.includes("\n") || s.length > 60) : s.length > 120;
   一个是在弹窗里预览，一个是离开本页。
 - 目录预览的 size 是 inode 大小（4096 这种），写出来只会让人困惑，改成「N 项」。
 
+## 网关：供应商池与协议翻译（2026-11-27）
+
+参照 [`yetone/magpie`](https://github.com/yetone/magpie) 实现的本地 AI 网关。目标只有一句话：
+**把所有供应商收进一个池子，让 claude / codex / pi 通过同一个本地端点用上它们，改配置不改 key。**
+
+magpie 迭代很快（0.1.4539 → 0.1.4940 只隔两周），所以**不寄生它的 `~/.config/magpie` 私有格式**，
+mtime 一变就可能读崩。OpenSession 自己存一份，语义对齐但格式独立。
+
+### 三个必须保留的设计
+
+这几条是这套东西真正好用的原因，砍掉任何一个都会退化成「又一个 base_url 转发器」：
+
+1. **一家供应商可同时挂多种协议基址** —— 不是「选一个协议」。moapi 这种中转站同时给 chat 和
+   anthropic，cctq3 只给 responses。**按传入端点选基址，缺的那种再翻译**。
+2. **多密钥** —— 同一家的多把 key / 多个账号按顺序故障转移，额度用完自动换下一个，
+    agent 看不到错误。所以「换账号」和「换供应商」是同一套遍历。
+3. **路由组 `group/<name>`** —— 把几家几个模型当成一个名字给 agent，按 routing 模式挑成员。
+   比「改 agent 配置」灵活得多，换模型不用碰 agent。
+
+### 四条线路的翻译矩阵
+
+对外同时讲四族协议，内部统一用 **OpenAI Chat 作 canonical 格式**。这样 N 个协议只需 2N 个
+转换函数，而不是 N²：
+
+```
+            入站（客户端说的）        出站（上游说的）
+  chat      ──────────────┐    ┌────────────── chat
+  responses ──────────────┤    ├────────────── responses
+  anthropic ──────────────┘    └────────────── anthropic
+                    canonical (OpenAI Chat)
+```
+
+| 上游基址字段 | 协议 |
+|---|---|
+| `url` | OpenAI Chat |
+| `anthropic` | Anthropic Messages |
+| `responses` | OpenAI Responses |
+
+**同协议整块透传**（最保真，未建模字段不会丢），**异协议才逐事件翻译**。
+
+### 🔴 流式的三处差异（都是实测踩出来的）
+
+| 协议 | usage 给在哪 | 坑 |
+|---|---|---|
+| Anthropic | `input_tokens` 只在 `message_start`、`output_tokens` 只在 `message_delta` | **分两处、都是完整值不是增量** → 必须 `mergeUsage` 合并，整体覆盖会把 input 抹成 0。**非流式正常，所以极难发现** |
+| Responses | `response.completed` 给全量 | — |
+| Chat | 流式默认不给 | 需请求侧带 `stream_options.include_usage` |
+
+`makeStreamState()` 里的 `finish()` 必须**幂等**：`[DONE]` / `message_stop` 触发一次后，
+`stream end` 还会再触发一次，不去重就会把收尾事件发两遍。
+
+SSE 按 `\n\n` 分帧缓冲——一个事件可能跨 TCP chunk，逐 chunk 解析会在边界处丢事件。
+
+### 只重试可重试的错误
+
+429 / 408 / 5xx 才换下一把 key；**401 / 403 / 400 直接透传上游原话**。
+否则用户等半天看到的是「超时」，而不是「密钥无效」——这是最难排查的一类问题。
+
+### 模型寻址
+
+| 写法 | 含义 |
+|---|---|
+| `provider/model` | 指定某家的某个模型 |
+| `group/<name>` | 走路由组，按 routing 模式挑成员 |
+| 裸 `model` | 用默认供应商；若其他家也声明了同名模型，**同时纳入故障转移** |
+
+routing 模式 `smart` / `pace` 依赖配额窗口探测（magpie 自己探测余额与重置时刻），
+OpenSession **不探测余额**，所以这两种**降级为 order / usage 并在界面上如实标注 `degraded`**，
+而不是假装支持。
+
+### Agent 指向与还原
+
+改任何 agent 配置前**强制备份**到 `~/.config/opensession/agent-backups/`。
+
+| Agent | 改动方式 | 说明 |
+|---|---|---|
+| claude | 逐键改 `settings.json` | `ANTHROPIC_BASE_URL=http://127.0.0.1:8347`，**不带 `/v1`**（SDK 自己拼） |
+| codex | **TOML 外科手术** | 不引 TOML 解析器（零依赖），只替换顶层 `model` / `model_provider` 两个赋值 + 重写自己的 `[model_providers.opensession]` 段，保住 129 个 `[projects.*]` 段与注释 |
+| pi | 改 `models.json` + settings | 注入 `opensession` 供应商（含 6 个模型），不动原有的 magpie |
+| dsh | **只读展示，不写** | 供应商在 `profiles/*/cordis.patch.yml` 的四层嵌套 YAML 里，零依赖下写它得自带保留缩进的 YAML 编辑器，代价不成比例 |
+
+还原策略比 magpie 保守：**回到「点『指向』之前那一刻」，不是回到厂商默认**——
+否则用户原来的中转站配置会丢。
+
+**🔴 备份查找必须用精确前缀**：`listBackups("pi")` 若用 `startsWith("pi-")`，
+会把 `pi-settings-*.json` 也算成 pi 的备份，倒序后 settings 成了「最新」，
+还原时拿 settings 的内容去覆盖 `models.json` → **providers 键整个消失**。
+所以是 `tag + "-"` 精确前缀 + 扩展名正则，并加**形状校验**（`looksLikePiModels()` 等），
+对不上就跳过并报告 `skipped`，绝不硬写。
+
+### 端点
+
+| 路径 | 协议 |
+|---|---|
+| `/gw/v1/chat/completions` | OpenAI Chat |
+| `/gw/v1/responses` | OpenAI Responses |
+| `/gw/v1/messages` | Anthropic Messages |
+| `/gw/v1/models` | 合并后的模型列表 |
+
+管理接口在 `/api/gw/*`（`state` / `provider` / `group` / `settings` / `agents` / `usage`）。
+
+### 安全边界
+
+- 只监听 `127.0.0.1`，与主服务同口（8347），**不额外开端口**。
+- 密钥单独存 `~/.config/opensession/gateway-keys.json`（600），与配置分离，便于单独备份/销毁。
+- 用量只记**量纲**（token / 延迟 / 状态码 / 走了哪家哪把 key），**不记请求与响应正文**。
+- 网关未启用时 `/gw/*` 一律 503，不做任何上游连接。
+
 ## HTTP 接口
 
 | 方法 | 路径 | 说明 |
@@ -918,6 +1034,14 @@ const need = isCmd ? (s.includes("\n") || s.length > 60) : s.length > 120;
 | POST | `/api/delete` | 删除单个会话（移入回收站） |
 | POST | `/api/delete-batch` | 批量删除，逐条校验，非法项跳过 |
 | GET | `/api/trash` | 回收站位置 + 当前平台（`{dir, platform, isWin, isMac}`，前端据此切换文案） |
+| GET | `/api/gw/state` | 网关全量状态（供应商含掩码后的 key、路由组、模型表、用量统计、routing 模式与降级标注、端点表） |
+| POST | `/api/gw/provider` | 新增 / 修改 / 删除供应商、改密钥、测连通（`action: add\|update\|remove\|removeKey\|setKeys\|test`） |
+| POST | `/api/gw/group` | 新增 / 修改 / 删除路由组 |
+| PUT | `/api/gw/settings` | 开关网关、默认供应商、重试次数、故障转移开关 |
+| GET / POST | `/api/gw/agents` | GET 探测三家 CLI 的现状；POST 带 `action: apply\|restore` 与 `agent` 写回或还原 |
+| GET | `/api/gw/usage` | 用量明细（`?since=&limit=`，倒序）。**必须先判 DELETE**：GET 分支若不带方法校验，`DELETE` 会被它接走，返回 `{rows:[]}` 却一行没删 |
+| DELETE | `/api/gw/usage` | 清空用量记录（配置不受影响） |
+| POST | `/gw/v1/chat/completions`<br>`/gw/v1/responses`<br>`/gw/v1/messages` | 网关转发入口（未启用时 503） |
 
 ## 删除会话
 

@@ -12,6 +12,7 @@
 <link rel="shortcut icon" href="/icons/icon-256.png" type="image/png">
 <link rel="apple-touch-icon" href="/icons/icon-192.png">
 <link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/gateway.css">
 <script>
 // 注册 service worker，让 Chrome 认为本页可安装成独立 Web App。
 // 注册失败不影响功能（页面本来就不依赖 SW），静默忽略即可。
@@ -27,6 +28,7 @@ if ("serviceWorker" in navigator) {
     <h1>📜 OpenSession
       <span class="headbtns">
         <button class="iconbtn" onclick="refreshAll(this)" title="刷新会话列表">↻</button>
+        <button class="iconbtn" id="gwbtn" onclick="gwOpen()" title="网关：供应商池、模型寻址、Agent 指向">🔀</button>
         <button class="iconbtn" id="sidebtn" onclick="toggleSide()" title="隐藏左侧列表（Ctrl+B）">«</button>
         <button onclick="openNew()">＋ 新建会话</button>
       </span>
@@ -82,6 +84,28 @@ if ("serviceWorker" in navigator) {
     左侧选择一个会话查看内容
     <button onclick="openNew()">＋ 新建会话</button>
   </div>
+</div>
+
+<!-- 网关视图：整屏覆盖 #main，独立于会话界面。
+     #side 不动 —— 网关是另一个功能面，塞进侧栏会把列表挤没。 -->
+<div id="gwview">
+  <div id="gwbar">
+    <h2>🔀 网关</h2>
+    <div id="gwsw" onclick="gwToggleEnabled()" title="点击开关网关">
+      <span class="dot"></span><span class="lbl">网关已关闭</span>
+    </div>
+    <div id="gwtabs">
+      <button data-t="providers" class="on" onclick="gwTab('providers')">供应商</button>
+      <button data-t="groups" onclick="gwTab('groups')">路由组</button>
+      <button data-t="agents" onclick="gwTab('agents')">Agent 指向</button>
+      <button data-t="usage" onclick="gwTab('usage')">用量</button>
+      <button data-t="endpoints" onclick="gwTab('endpoints')">接入</button>
+    </div>
+    <span class="grow"></span>
+    <button onclick="gwLoad()" title="重新读取配置与用量">↻</button>
+    <button onclick="gwClose()" title="关闭（Esc）">✕ 关闭</button>
+  </div>
+  <div id="gwbody"></div>
 </div>
 
 <div id="modal" onclick="if(event.target===this)this.classList.remove('show')">
@@ -142,6 +166,7 @@ if ("serviceWorker" in navigator) {
 <script src="/js/embed.js"></script>
 <script src="/js/outline.js"></script>
 <script src="/js/newmodal.js"></script>
+<script src="/js/gateway.js"></script>
 <script src="/js/main.js"></script>
 </body>
 </html>

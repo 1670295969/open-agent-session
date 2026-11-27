@@ -98,6 +98,12 @@ function initMobile() {
   else if (mq.addListener) mq.addListener(onChange); // Safari < 14
   // Esc 也能退出正文（有键盘的平板 / 外接键盘时）
   document.addEventListener("keydown", (e) => {
+    // 网关视图开着时优先关网关：否则两套 Esc 会互相打架 ——
+    // 手机档下 Esc 会先退回列表，但用户此时看着的是网关，视觉上是「按了没反应」
+    if (e.key === "Escape" && document.documentElement.classList.contains("gw-open")) {
+      gwClose();
+      return;
+    }
     if (e.key === "Escape" && isPhone() && document.documentElement.classList.contains("m-view")) {
       applyMobileView(false);
     }
