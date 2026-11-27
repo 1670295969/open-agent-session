@@ -190,7 +190,9 @@ function toggleEmbed(btn) {
   const badge = document.getElementById("livebadge");
   if (ib) ib.classList.toggle("show", state.embedOpen);
   if (badge) badge.style.display = state.embedOpen ? "inline-flex" : "none";
-  if (btn) btn.textContent = state.embedOpen ? "✕ 关闭页面内会话" : "💻 页面内恢复";
+  // 顶栏按钮已收进 ⋯ 菜单：改成 null 调用（不传按钮），文案由 barMenuAct 负责。
+  // 这里仍保留按钮分支，是为兼容任何直接传按钮的旧调用点。
+  if (btn) btn.textContent = state.embedOpen ? "✕ 关闭页面内会话" : "💻 页面内继续对话";
   syncInputBarClass();
   if (state.embedOpen) {
     fillEmbedSelectors();

@@ -218,6 +218,20 @@ function renderChat() {
   // 手机档专用返回键：CSS 里默认 display:none，只有 ≤640px 且
   // html.m-view 时才显形，桌面和平板完全看不到这个按钮。
   // 放在 #bar 最前面，手指够得着的同时不打断既有按钮的换行节奏。
+  // 🔴 顶栏按钮预算：这里每加一个按钮都要重新量一遍。
+  // 2026-11-27 之前是 7 个常驻按钮（命令 / Markdown / 刷新 / 复制 / 导出 /
+  // 页面内恢复 / 终端恢复），合计 697px —— 1024px 窗口下 info 只剩 256px，
+  // 路径被截成 "/media/liu/source/download/0179..."，恢复命令也看不全，
+  // 顶栏还被挤成 4 行（实测 112px 高）。
+  // 现在只留「高频开关 + 主操作」，低频四项收进 ⋯ 菜单，按钮合计约 270px。
+  const menu = [
+    '<button data-act="reload" onclick="barMenuAct(\'reload\',this)">↻ 刷新本会话</button>',
+    '<button data-act="copy" onclick="barMenuAct(\'copy\',this)">⧉ 复制恢复命令</button>',
+    '<button data-act="export" onclick="barMenuAct(\'export\',this)">⤓ 导出 Markdown</button>',
+    isEmbeddable(s)
+      ? '<button data-act="embed" onclick="barMenuAct(\'embed\',this)">' +
+          (embedOn ? "✕ 关闭页面内会话" : "💻 页面内继续对话") + '</button>' : "",
+  ].join("");
   const bar = '<div id="bar">' +
       '<button id="backbtn" onclick="backToList()" title="返回会话列表">‹ 列表</button>' +
       '<div class="info">' +
@@ -232,14 +246,16 @@ function renderChat() {
         (state.toolOff && toolN ? ' <span class="btnnum">' + (toolN > 99 ? "99+" : toolN) + '</span>' : "") +
         '</button>' +
       '<button id="mdbtn" class="' + (state.mdOff ? "" : "on") + '" onclick="toggleMd(this)" ' +
-        'title="切换 Markdown 渲染 / 纯文本">M↓ Markdown</button>' +
-      '<button onclick="reloadActive(this)" title="重新读取本会话">↻ 刷新</button>' +
-      '<button onclick="copyCmd()">复制命令</button>' +
-      '<button onclick="doExport()">导出 MD</button>' +
-      (isEmbeddable(s)
-        ? '<button onclick="toggleEmbed(this)">' +
-            (embedOn ? "✕ 关闭页面内会话" : "💻 页面内恢复") + '</button>' : '') +
-      '<button class="primary" onclick="doResume(this)">▶ 终端恢复会话</button></div>';
+        'aria-label="Markdown 渲染开关" ' +
+        'title="' + (state.mdOff ? "当前为纯文本，点击恢复 Markdown 渲染" : "当前渲染 Markdown，点击切为纯文本") +
+        '">M↓<span class="btnlong"> Markdown</span></button>' +
+      '<span class="bmwrap" id="bmwrap">' +
+        '<button id="morebtn" onclick="barMenu(event)" aria-haspopup="true" aria-expanded="false" ' +
+          'title="更多：刷新 / 复制命令 / 导出 / 页面内继续">⋯</button>' +
+        '<div id="barmenu" role="menu">' + menu + '</div>' +
+      '</span>' +
+      '<button class="primary" id="resumebtn" onclick="doResume(this)" title="在终端里恢复这个会话">' +
+        '▶<span class="btnhalf"> 恢复</span><span class="btnlong"> 终端恢复会话</span></button></div>';
 
   $("#main").innerHTML = bar + chat + (isEmbeddable(s) ? inputBarHtml(embedOn) : "");
   bindEmbedInput();
@@ -332,6 +348,79 @@ function toggleTools(btn) {
   renderChat();
   toast(state.toolOff ? "已隐藏工具调用" : "已显示工具调用");
 }
+
+// ---- 顶栏溢出菜单 ----
+// 为什么要有：顶栏原来平铺 7 个按钮，1024px 下把路径和恢复命令挤成一条缝，
+// 还撑成 4 行。刷新 / 复制命令 / 导出 / 页面内继续都是低频动作，
+// 收进「⋯」既保住信息区宽度，也让「终端恢复」这个主操作更显眼。
+function barMenu(e) {
+  if (e) { e.preventDefault(); e.stopPropagation(); }
+  const wrap = document.getElementById("bmwrap");
+  if (!wrap) return;
+  const open = !wrap.classList.contains("open");
+  wrap.classList.toggle("open", open);
+  const btn = document.getElementById("morebtn");
+  if (btn) btn.setAttribute("aria-expanded", open ? "true" : "false");
+  if (open) clampBarMenu();
+}
+
+// 菜单默认右对齐到「⋯」按钮（CSS right:0）。手机上「⋯」不在行末（后面还有终端恢复），
+// 右对齐会让 178px 的菜单左侧探出视口（390px 实测 left=-22）。
+// 所以只在**真的越界时**才修正，能贴着按钮就不动 —— 否则宽屏下菜单会飘到屏幕最右边，
+// 跟「⋯」失去视觉联系。
+function clampBarMenu() {
+  const m = document.getElementById("barmenu");
+  if (!m) return;
+  const pad = 8;
+  // 每次打开先清掉上次的修正，回到 CSS 的默认右对齐再量
+  m.style.left = "";
+  m.style.right = "";
+  // 极窄屏（<=320）下 178px 也放不下时收窄，宁可折行也别出界
+  m.style.maxWidth = window.innerWidth - pad * 2 + "px";
+  let r = m.getBoundingClientRect();
+  // ① 左边越界（手机档的典型情况）：整体右移到贴边
+  if (r.left < pad) {
+    m.style.left = pad - r.left + "px";
+    m.style.right = "auto";
+    r = m.getBoundingClientRect();
+  }
+  // ② 右边越界（按钮贴着视口右缘时可能出现）：整体左移到贴边
+  if (r.right > window.innerWidth - pad) {
+    m.style.left = "0px";
+    m.style.right = "auto";
+    const base = m.getBoundingClientRect().left;   // left:0 时的左边缘
+    const target = window.innerWidth - pad - m.getBoundingClientRect().width;
+    m.style.left = target - base + "px";
+  }
+}
+
+function closeBarMenu() {
+  const wrap = document.getElementById("bmwrap");
+  if (wrap) wrap.classList.remove("open");
+  const btn = document.getElementById("morebtn");
+  if (btn) btn.setAttribute("aria-expanded", "false");
+}
+
+function barMenuAct(act, btn) {
+  closeBarMenu();
+  if (act === "reload") return reloadActive(btn);
+  if (act === "copy") return copyCmd();
+  if (act === "export") return doExport();
+  if (act === "embed") {
+    // 传 null：按钮文案由下面按状态改，交给 toggleEmbed 改会把菜单项文字写死
+    toggleEmbed(null);
+    if (btn) btn.textContent = state.embedOpen ? "✕ 关闭页面内会话" : "💻 页面内继续对话";
+  }
+}
+
+// 点别处 / 按 Esc 收起菜单。#bar 每次重绘都会重建菜单，所以监听挂在 document 上，
+// 用 closest 判断是否点在菜单内部（重绘后依然有效，不依赖元素引用）。
+document.addEventListener("click", (e) => {
+  if (!e.target.closest("#bmwrap")) closeBarMenu();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeBarMenu();
+});
 
 // ---- Markdown 开关 ----
 function toggleMd(btn) {

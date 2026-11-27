@@ -56,6 +56,18 @@ html.side-collapsed #bar { padding-left: 108px; }
 #head h1 {
   font-size: 17px; margin-bottom: 11px; color: #fff;
   display: flex; align-items: center; justify-content: space-between;
+  /* flex-wrap:nowrap —— 原来没写（默认 nowrap 但标题是裸文本节点，
+     无法收缩）。834px 平板档侧栏收窄到 280 后，标题被压成两行（高 50px），
+     「OpenSession」竖着排。品牌名包一层 .brand 才能设 min-width:0 + ellipsis。 */
+  flex-wrap: nowrap; gap: 8px;
+}
+#head h1 .brand {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* 品牌名里的图标可以整块丢掉，文字部分才有机会完整显示（834 实测 97px 够放下
+   「OpenSession」，但加上 📜 就只剩 "Open…"）。 */
+@media (max-width: 900px) {
+  #head h1 .blogo { display: none; }
 }
 #head h1 button { font-size: 13.5px; padding: 5px 11px; }
 #head h1 .headbtns { display: flex; align-items: center; gap: 7px; flex-shrink: 0; }
@@ -698,6 +710,57 @@ button.primary:hover { background: linear-gradient(180deg, #4681d8, #3070c4); bo
 .bubble.md tr:last-child td { border-bottom: none; }
 .bubble.md tbody tr:hover { background: rgba(255, 255, 255, .025); }
 
+/* 顶栏溢出菜单（⋯）：刷新 / 复制命令 / 导出 / 页面内继续都放这里。
+   原来这四项平铺在顶栏，1024px 下 info 只剩 256px、顶栏撑到 4 行；
+   收进菜单后按钮合计从 697px 降到约 270px，路径与恢复命令重新可读。 */
+#bar .bmwrap { position: relative; flex-shrink: 0; display: inline-flex; }
+#bar #morebtn {
+  /* 比常规按钮窄一半：它只是个入口，不需要跟文字按钮抢宽度 */
+  padding: 6px 10px; font-size: 15px; line-height: 1;
+  letter-spacing: .5px;
+}
+#bar .bmwrap.open #morebtn {
+  background: var(--surf-2); border-color: #4d525b; color: #fff;
+}
+#barmenu {
+  display: none; position: absolute; top: calc(100% + 6px); right: 0; z-index: 60;
+  min-width: 178px; padding: 5px; border-radius: 9px;
+  background: var(--panel2); border: 1px solid var(--border);
+  box-shadow: 0 10px 28px -8px rgba(0, 0, 0, .75), 0 2px 6px rgba(0, 0, 0, .4);
+}
+#bar .bmwrap.open #barmenu { display: block; }
+#barmenu button {
+  display: block; width: 100%; text-align: left;
+  padding: 8px 11px; font-size: 13.5px; border: none; border-radius: 6px;
+  background: transparent; color: #d3d8e0; white-space: nowrap;
+}
+#barmenu button:hover { background: var(--accent); color: #12161d; font-weight: 600; }
+/* 按钮文字的三种长度：全称 / 半称 / 只剩图标。
+   逐级降级而不是一刀切 —— 1024 下「▶ 恢复」比光秃秃一个 ▶ 好认。
+   🔴 默认必须把「半称」藏掉：两个 span 同时存在，不藏就会渲染成
+   「▶ 恢复 终端恢复会话」（1500 实测过）。
+   断点不是随口取的：桌面档侧栏 401px，1101–1280 之间正文只剩 700–880，
+   「M↓ Markdown」+「▶ 终端恢复会话」全称会把顶栏撑成 4 行（实测 112px），
+   所以 <1280 先丢全称；<1000 连「恢复」二字都留不住，只余图标
+   （title / aria-label 仍然说明完整含义，键盘与读屏都不受影响）。 */
+#bar .btnhalf { display: none; }
+@media (max-width: 1279px) {
+  #bar .btnlong { display: none; }
+  #bar .btnhalf { display: inline; }
+  /* 这一段正文只有 500–880px（侧栏还占 401），桌面档的 13.5px 字号
+     + 13px 内边距仍会把顶栏顶成 4 行（901px 实测 112px）。
+     沿用平板档的紧凑规格：按钮约 190px，info 才留得住 230px 以上。 */
+  #bar { padding: 10px 14px; gap: 7px; }
+  #bar button { padding: 5px 10px; font-size: 12.5px; }
+  #bar .info { flex: 1 1 200px; min-width: 140px; }
+}
+@media (max-width: 1000px) {
+  #bar .btnhalf { display: none; }
+}
+@media (max-width: 1000px) {
+  #bar .btnhalf { display: none; }
+}
+
 /* Markdown 开关 */
 #mdbtn.on { background: var(--accent); border-color: var(--accent); color: #12161d; font-weight: 600; }
 /* 工具调用开关：默认关（正文里不铺 exec_command）。
@@ -1114,13 +1177,27 @@ button.danger:disabled { opacity: .55; cursor: default; }
 
   #head { padding: 12px 12px 8px; }
   #head h1 { font-size: 15.5px; }
+  /* 280px 侧栏放不下「↻ 🔀 « ＋ 新建会话」+ 品牌名：按钮合计 195px，
+     标题只剩 39px 会被压成竖排（实测 h1 高 50px）。
+     平板档把「新建会话」降成只有 ＋（省 58px），标题就有 121px 放得下全名。
+     手机档侧栏铺满整屏，标题有 213px，不必降级 —— 所以这条只放平板档。 */
+  #head h1 .btnlong { display: none; }
+  /* 只限平板档（641 起）：手机档侧栏铺满整屏，标题有 213px，
+     没必要把按钮缩到 4px 内边距，触屏点击区太小。 */
+  #head h1 { gap: 6px; }
+  #head h1 .headbtns { gap: 5px; }
+  #head h1 .iconbtn { padding: 4px 7px; }
+  #head h1 #newbtn { padding: 4px 8px; }
   #searchrow #search { font-size: 13px; }
   /* 三个 chip 一行放不下，降到两列更稳 */
   #stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
   #bar { padding: 10px 14px; gap: 7px; }
   #bar button { padding: 5px 10px; font-size: 12.5px; }
-  #bar .info { flex: 1 1 100%; min-width: 0; }
+  /* 平板档按钮只剩图标（约 195px），info 不必再独占一行。
+     原来写 flex:1 1 100% 会把顶栏顶成两行（834px 实测 103px 高）；
+     回落到 240px 后能并排就并排，真挤不下时 flex-wrap 自己会换行。 */
+  #bar .info { flex: 1 1 240px; min-width: 150px; }
 
   .msg { margin-bottom: 24px; }
 }
@@ -1147,8 +1224,12 @@ button.danger:disabled { opacity: .55; cursor: default; }
   html.side-collapsed #handle { display: none; }
   html.side-collapsed #bar { padding-left: 14px; }
 
-  /* 顶栏：手机上一行放不下四个按钮，让 info 独占一行，按钮排第二行 */  #bar { padding: 9px 12px; gap: 6px; }
+  /* 顶栏：手机上一行放不下「返回 + 路径 + 命令 + 四个按钮」，让 info 独占一行，
+     按钮排第二行。返回键跟 info 同一行（basis 扣掉返回键宽度），
+     否则它自己白占一行、顶栏多出 30px —— 390px 上正文因此少一整段。 */
+  #bar { padding: 9px 12px; gap: 6px; }
   #bar .info { flex: 1 1 100%; min-width: 0; font-size: 12.5px; }
+  html.m-view #bar .info { flex: 1 1 calc(100% - 64px); }
   #bar button { font-size: 12px; padding: 5px 9px; }
   #bar .cwd { font-size: 12.5px; gap: 5px; }
   /* 恢复命令在 390px 上一定放不下，桌面的 ellipsis 等于「永远看不全」。
@@ -1183,6 +1264,9 @@ button.danger:disabled { opacity: .55; cursor: default; }
   /* 列表头收紧 */
   #head { padding: 12px 12px 8px; }
   #head h1 { font-size: 15px; margin-bottom: 9px; }
+  /* 手机档整屏都是列表，标题有 213px 富余 —— 把平板档为省宽度藏掉的
+     「新建会话」文字放回来，按钮更好认（390 实测仍是一行，h1 高 31px）。 */
+  #head h1 .btnlong { display: inline; }
   #head h1 button { font-size: 12.5px; padding: 5px 9px; }
   #list { padding: 0 4px; }
 

@@ -25,12 +25,12 @@ if ("serviceWorker" in navigator) {
 
 <div id="side">
   <div id="head">
-    <h1>📜 OpenSession
+    <h1><span class="brand" title="OpenSession"><span class="blogo">📜 </span>OpenSession</span>
       <span class="headbtns">
         <button class="iconbtn" onclick="refreshAll(this)" title="刷新会话列表">↻</button>
         <button class="iconbtn" id="gwbtn" onclick="gwOpen()" title="网关：供应商池、模型寻址、Agent 指向">🔀</button>
         <button class="iconbtn" id="sidebtn" onclick="toggleSide()" title="隐藏左侧列表（Ctrl+B）">«</button>
-        <button onclick="openNew()">＋ 新建会话</button>
+        <button id="newbtn" onclick="openNew()">＋<span class="btnlong"> 新建会话</span></button>
       </span>
     </h1>
     <div id="searchrow">
