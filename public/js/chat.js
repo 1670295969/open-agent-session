@@ -210,10 +210,13 @@ function renderChat() {
     : "";
   // 路径必须包一层可收缩的 span：#bar .cwd 是 flex 容器，直接放文本节点
   // 无法收缩，路径一长就把右侧的条数/跨度整个挤出可视区（overflow:hidden 吞掉）。
+  // 同时做成可点的：点一下直接浏览这个目录（正文里的相对路径也靠它兜底，
+  // 用户能先确认会话的工作目录到底是哪个）。
   const bar = '<div id="bar"><div class="info">' +
       '<div class="cwd">' +
-        '<span class="cwdpath" title="' + escAttr(s.cwd || "") + '">📁 ' +
-          esc(s.cwd || "(未知目录)") + '</span>' +
+        '<a class="cwdpath" href="#" data-file="' + escAttr(s.cwd || "") + '"' +
+          ' title="点击浏览这个目录：' + escAttr(s.cwd || "") + '">📁 ' +
+          esc(s.cwd || "(未知目录)") + '</a>' +
         badge + spanHtml(visible.map((it) => it.m), msgs) + '</div>' +
       '<div class="cmd">' + cmdPrompt() + ' ' + esc(s.resumeCmd) + '</div></div>' +
       '<button id="toolbtn" class="' + (state.toolOff ? "" : "on") + '" onclick="toggleTools(this)" ' +

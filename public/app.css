@@ -356,10 +356,15 @@ body.has-input #outline { bottom: 148px; }
   margin-bottom: 3px;
 }
 /* 路径是唯一可压缩的部分：给它 min-width:0 + ellipsis，
-   长路径自动截断，右侧的徽标与会话规模始终保持可见。 */
+   长路径自动截断，右侧的徽标与会话规模始终保持可见。
+   它同时是个链接（点击浏览该目录），所以要抹掉 <a> 的默认样式 ——
+   顶栏这里保持和正文一致的浅灰，悬停才提示可点。 */
 #bar .cwdpath {
   min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: inherit; text-decoration: none; border-bottom: 1px dashed transparent;
+  cursor: pointer;
 }
+#bar .cwdpath:hover { color: #dbe2ec; border-bottom-color: rgba(219, 226, 236, .35); }
 /* 会话规模（条数 + 时间跨度）：比 cwd 更弱，靠右不抢视线 */
 #bar .cwdmeta {
   flex-shrink: 0; margin-left: auto; padding-left: 12px;
@@ -592,6 +597,21 @@ button.primary:hover { background: linear-gradient(180deg, #4681d8, #3070c4); bo
 .bubble.md del { color: var(--dim); }
 .bubble.md a { color: #7fb2ff; text-decoration: none; border-bottom: 1px solid rgba(127, 178, 255, .35); }
 .bubble.md a:hover { border-bottom-color: #7fb2ff; }
+/* 本地路径链接：和网络链接区分开 —— 网络链接点开会离开本页（新标签），
+   本地路径是在弹窗里预览。用虚线下划线 + 青绿色，一眼能看出「这个是文件」。
+   对比度按深色底调到 AA：`#a9e0cf` 在 --bg(#1e1f22) 上对比度约 9:1，
+   比正文的 #e8e8e8 稍弱（提示它是可点的次级元素）但远高于早先那版。 */
+.bubble.md a.filelink {
+  color: #a9e0cf; border-bottom: 1px dashed rgba(169, 224, 207, .55);
+  font-family: var(--mono); font-size: .94em;
+}
+.bubble.md a.filelink:hover {
+  color: #d6f5ea; border-bottom-color: #d6f5ea;
+  background: rgba(169, 224, 207, .1); border-radius: 2px;
+}
+/* 行内代码里的链接：保留代码底色，只把字色换掉，别做成两种视觉 */
+.bubble.md a.filelink code.ic { color: #a9e0cf; border-color: rgba(169, 224, 207, .3); }
+.bubble.md a.filelink:hover code.ic { color: #d6f5ea; }
 .bubble.md ul, .bubble.md ol { margin: 0 0 11px; padding-left: 24px; }
 /* md.js 把列表整段包进 .mdlist，内层 ol/ul 的 margin 被清零后
    序号会贴着文字（"1启动导航…"）。这里补回缩进与项目间距。 */
@@ -933,6 +953,97 @@ details.toolcall .tfbody {
 button.danger { background: #7d2b33; border-color: #7d2b33; color: #fff; }
 button.danger:hover { background: #99333d; border-color: #99333d; }
 button.danger:disabled { opacity: .55; cursor: default; }
+
+/* ---------- 文件预览弹窗 ---------- */
+/* 层级放在 #modal(9) / #delmodal(10) 之上，但在 toast(99) 之下：
+   预览是「看内容」的最高层，其他弹窗都是它的操作对象。 */
+#peek {
+  position: fixed; inset: 0; background: rgba(0, 0, 0, .62); display: none;
+  align-items: center; justify-content: center; z-index: 40; padding: 24px;
+}
+#peek.show { display: flex; }
+#peek .pk {
+  display: flex; flex-direction: column; width: min(1180px, 100%); height: 100%;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 11px;
+  box-shadow: 0 22px 60px rgba(0, 0, 0, .66); overflow: hidden;
+}
+#peek .pkhead {
+  display: flex; align-items: center; gap: 10px; padding: 9px 11px 9px 15px;
+  border-bottom: 1px solid var(--line); background: var(--panel2); flex: none;
+}
+#peek .pktitle {
+  font-family: var(--mono); font-size: 13px; color: #cfd6e0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  /* 路径可能很长（实测 100+ 字），必须能缩，否则会把右侧按钮挤出去 */
+  flex: 0 1 auto; min-width: 80px;
+}
+#peek .pkmeta {
+  font-size: 12px; color: #7d8492; white-space: nowrap; flex: none;
+  font-variant-numeric: tabular-nums;
+}
+#peek .pkgap { flex: 1 1 auto; min-width: 8px; }
+#peek .pkhead button { flex: none; font-size: 12.5px; padding: 4px 10px; }
+#peek .pkbody {
+  flex: 1 1 auto; overflow: hidden; background: var(--sunk); min-height: 0;
+  display: flex;
+}
+#peek .pkfoot {
+  flex: none; display: flex; align-items: center; gap: 9px;
+  padding: 7px 13px; border-top: 1px solid var(--line); background: var(--panel2);
+  font-size: 12.5px; color: var(--dim);
+}
+#peek .pkfoot:empty { display: none; }
+#peek .pkfoot button { font-size: 12.5px; padding: 3px 10px; }
+#peek .pkhint { color: #7d8492; margin-left: auto; }
+#peek .pkload, #peek .pkerr {
+  margin: auto; padding: 26px; font-size: 14px; color: var(--dim);
+  text-align: center; line-height: 1.75; max-width: 560px;
+}
+#peek .pkerr { color: #d98a92; }
+
+/* 文本：行号用 counter 生成，序号与代码行天然对齐，不必拼两列 DOM。
+   每行是 inline 的 span 并强制换行 —— 这样才能整块横向滚动，
+   而不会因为某行超长把整个 pre 撑成一条线。 */
+#peek .pkpre {
+  margin: 0; padding: 12px 16px 28px; overflow: auto; flex: 1 1 auto;
+  counter-reset: pkln; font-family: var(--mono); font-size: 13px; line-height: 1.6;
+  color: #c9d1dc; tab-size: 4;
+}
+#peek .pkl { display: block; white-space: pre; padding-right: 16px; }
+#peek .pkl::before {
+  counter-increment: pkln; content: counter(pkln);
+  display: inline-block; width: 4.2em; margin-right: 12px;
+  padding-right: 10px; text-align: right; color: #5d6470;
+  border-right: 1px solid var(--line-soft); font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+#peek .pkl.hit {
+  background: rgba(232, 163, 61, .13);
+  box-shadow: inset 3px 0 0 #e8a33d;
+}
+#peek .pkl.hit::before { color: #e8a33d; font-weight: 600; }
+
+/* 图片 */
+#peek .pkimg {
+  margin: auto; padding: 18px; overflow: auto; max-width: 100%; max-height: 100%;
+  display: flex; align-items: center; justify-content: center;
+}
+#peek .pkimg img {
+  max-width: 100%; max-height: calc(100vh - 190px); object-fit: contain;
+  border-radius: 6px; background: repeating-conic-gradient(#2a2d33 0 25%, #23262b 0 50%) 0 0/18px 18px;
+}
+
+/* 目录列表 */
+#peek .pkdir {
+  flex: 1 1 auto; overflow: auto; padding: 10px; display: flex;
+  flex-direction: column; gap: 1px;
+}
+#peek .pke {
+  padding: 5px 11px; border-radius: 5px; font-size: 13.5px; color: #c3cbd6;
+  text-decoration: none; border: none; font-family: var(--mono);
+}
+#peek .pke:hover { background: var(--surf-2); color: #fff; }
+#peek .pke.isdir { color: #9ec5ff; }
 
 /* ---------- Toast ---------- */
 #toast {

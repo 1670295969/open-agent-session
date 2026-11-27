@@ -249,6 +249,7 @@ opensession/
 │   ├── trash-win.js            Windows 系统回收站实现（Shell API）
 │   ├── models.js               模型 / 思考强度目录（10 分钟缓存）
 │   ├── exporter.js             Markdown 导出
+│   ├── fileview.js             本地文件预览：路径解析（含 :行号）、按行取窗口、编辑器定位
 │   ├── terminal.js             终端启动统一入口（命令模板 + 平台选择）
 │   ├── terminal-linux.js       Linux：终端候选 + sandbox DBus 修复 + /proc 探环境
 │   ├── terminal-mac.js         macOS：写 .command + open（跟随默认终端）
@@ -283,6 +284,7 @@ opensession/
         ├── search.js            全文搜索：模式切换、防抖、结果片段、命中定位
         ├── del.js               删除：确认弹窗、多选批量、回收站交互
         ├── chat.js              右侧正文：Markdown 消息渲染（全文不分页）、顶部操作
+        ├── peek.js              文件预览弹窗：文本 / 图片 / 目录、行号定位、编辑器打开
         ├── embed.js             页面内会话：输入栏、自绘下拉、SSE 收发、页面内新建
         ├── outline.js           提问导航（大纲）：只列用户提问，点击/Alt+↑↓ 跳转
         ├── newmodal.js          新建会话弹窗（终端 / 页面内两条路径）
@@ -705,6 +707,70 @@ const need = isCmd ? (s.includes("\n") || s.length > 60) : s.length > 120;
 
 命令块的复制按钮 `.tfcopy` 必须**先于** `.msgcopy` 判断，否则会被当成「复制整条消息」。另外要点 `preventDefault()` + `stopPropagation()`：按钮在 `<details>` 里，不拦的话点复制会顺手把折叠块收起来，复制完内容就看不见了。
 
+## 本地文件预览与链接（2026-11-27）
+
+正文里出现的路径（`/home/x/a.kt:44`、`~/b.log#L96`、`out/report.md`）和网络链接
+现在都可点：网络链接新标签打开，本地路径在弹窗里预览，还能一键送进编辑器定位到行。
+
+三块代码：
+
+| 位置 | 职责 |
+|---|---|
+| `public/js/md.js` | 渲染时识别路径，产出 `<a class="filelink" data-file data-line>` |
+| `public/js/peek.js` | 弹窗：文本 / 图片 / 目录 / 二进制；翻页；Esc 关闭 |
+| `lib/fileview.js` | 路径解析、按行取窗口、`/api/raw`、编辑器打开 |
+
+### 🔴 为什么必须在渲染层判断，后端不做
+
+一条路径在会话文件里就是一串普通文本，和「TCP/IP」「24/7」长得一样。后端解析消息时
+没有上下文，判不出用户是不是想点它。只有渲染时才看得见反引号、markdown 链接这些信号。
+
+### 🔴 路径识别的三条硬规则（都是实测踩出来的）
+
+全库 3085 条正文里出现过 2882 处路径，靠自然语言猜的代价很高。三条规则：
+
+1. **反引号里的内容要单独判**。agent 写路径的主流形式是 `` `/home/x/a.kt:44` ``。
+   行内代码如果一律当纯代码，最该点的那些一个都点不了。所以 `mdInline` 的第 1 步
+   先判断「这段代码是不是路径 / URL」，是就渲染成带等宽样式的链接。
+2. **相对路径必须带已知扩展名**（`.md`/`.kt`/`.log`…）。`24/7`、`TCP/IP`、`和/或`
+   都是常见写法，放行纯目录相对路径会让正文变成蓝色乱麻。
+3. **绝对路径要通过可信度校验**（`isRealAbsPath`），不能「以 / 开头就算路径」：
+   - 顶层目录必须是常见系统根（`/home` `/data` `/tmp` `/media` `/ota` …），
+     挡住 `/v1/chat/completions`、`/api/pricing` 这类 API 路径（实测 21 处）；
+   - 或末段带扩展名（兜住非常规根）；
+   - 且至少一段含 ASCII 字母数字 —— 中文行文里 `判定/理由/错在哪`、`版本/写成方`
+     这类并列结构极多，放宽前导后一下冒出 11 处假链接。
+4. **glob 不链接**：`decoded/*.log`、`/data/anr/trace_*` 点了必然「文件不存在」，
+   连结束位置紧跟 `* ? { [ <` 的候选一并跳过。
+
+审计脚本对全库跑过一遍：2695 个链接里假链接 0 处（剩下 5 处「可疑」是带中文文件名的
+真路径，审计脚本按「含中文」误报）。
+
+### 🔴 文本窗口：50MB 文件不能整读
+
+日志类文件实测 90 万行 / 50MB。`fs.readFileSync` 后 `split("\n")` 会把服务撑爆。
+`readWindow()` 用 `readline` 流式过一遍，只留目标行前 120 行起、共 400 行的窗口，
+总行数顺路数出来（「共 N 行」这个信息定位日志全靠它）。
+
+两个边界：
+
+- **行号超出文件末尾**（旧文件里的行号，日志被轮转截短了）：一行动作都没有时
+  退回「最后 400 行」，并标 `clamped: true`。留白页比给错位的信息更糟。
+- **行号要在前端单独传**：`data-file` 已经把 `:44` 剥掉了，路径本身不带行号。
+  这就要求 `/api/peek` 除了从路径里解析行号，还要接受 `line` 参数（第一版漏了，
+  命中行不高亮）。
+
+### 🔴 行号用 CSS counter，起点必须是 `from - 1`
+
+`counter-reset: pkln N` 写在 `<pre>` 的行内样式上。翻到第 2280 行时若仍从 1 数起，
+读日志会彻底错位。
+
+### 视觉上的两个决定
+
+- 本地链接用**青绿色虚下划线 + 等宽字体**，和网络链接（蓝色实线）区分开：
+  一个是在弹窗里预览，一个是离开本页。
+- 目录预览的 size 是 inode 大小（4096 这种），写出来只会让人困惑，改成「N 项」。
+
 ## HTTP 接口
 
 | 方法 | 路径 | 说明 |
@@ -713,6 +779,9 @@ const need = isCmd ? (s.includes("\n") || s.length > 60) : s.length > 120;
 | GET | `/api/session?file=&tool=` | 单会话消息数组，每项 `{role,time,text,tool,think,toolFull?}`（`think` 为思考过程，可能为空串/缺失；`toolFull` 为完整命令，仅摘要装不下时存在） |
 | GET | `/api/models` | 模型目录 + 思考强度档位 |
 | GET | `/api/search?q=&tool=&since=` | 全文搜索（正文 + 思考 + 命令）。返回 `{q,took,total,truncated,results[]}`，每条结果含 `count` 与最多 6 个 `hits[{i,role,field,fieldLabel,pre,hit,post}]`；`field` 为 `text`/`think`/`tool`，`since` 为毫秒时间戳 |
+| GET | `/api/peek?path=&cwd=&line=&from=` | 本地文件预览。`kind` 为 `text`（含 `lines[]`/`from`/`to`/`totalLines`）/`image`/`dir`/`binary`；路径可带 `:44` 或 `#L96`；`cwd` 用于解析相对路径；`from` 翻页取窗口 |
+| GET | `/api/raw?path=&cwd=` | 原样字节（图片预览 / 下载） |
+| POST | `/api/open` | 用编辑器打开并定位到行（`{path, line}` → `{ok, via}`）；依次尝试 code / codium / cursor / subl / idea，最后退回系统默认程序 |
 | GET | `/api/export?file=&tool=&title=&id=&cwd=` | 导出 Markdown |
 | POST | `/api/resume` | 在终端恢复会话 |
 | POST | `/api/new` | 在终端新建会话 |
