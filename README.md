@@ -302,6 +302,7 @@ opensession/
 ├── tools/
 │   ├── make-icon.py            从零生成 ico / icns / png（PIL，4× 超采样抗锯齿）
 │   ├── tunnel-client.sh        客户端侧 SSH 隧道脚本（另一台设备访问本机用，见下节）
+│   ├── import-magpie.js        从 magpie 导入供应商与模型（幂等，可反复跑）
 │   └── rebuild-remote-repo.sh  删库重建后重推干净历史（发布前体检 + 远端复查）
 ├── bin/
 │   ├── opensession-service     服务 wrapper：探测 node、补 PATH 与运行时环境、exec server
@@ -973,6 +974,44 @@ SSE 按 `\n\n` 分帧缓冲——一个事件可能跨 TCP chunk，逐 chunk 解
 | `provider/model` | 指定某家的某个模型 |
 | `group/<name>` | 走路由组，按 routing 模式挑成员 |
 | 裸 `model` | 用默认供应商；若其他家也声明了同名模型，**同时纳入故障转移** |
+
+### 🔴 测连通不能只测第一个模型
+
+`testProvider` 最初只打 `models[0]`，代价是**把一家能用的供应商误判成挂了**：
+实测 `codex-for-me` 有 13 个模型，其中 `codex-auto-review` / `gpt-5.6` / `gpt-6`
+三个已在上游下线（503），而 `models[0]` 恰好是 `codex-auto-review` ——
+整家红着，另外 10 个可用模型完全没被看到。
+
+现在失败就换下一个（最多 3 个），**只要有一个通就算这家没问题**，
+并把 `attempts[]`（试过哪些模型、各自状态码）一起返回，让界面能区分
+「这家整站不通」与「只是这个模型下线了」。
+
+`401 / 403` 不往下试 —— 那是密钥问题，换模型一样错，白打。
+
+### 从 magpie 导入
+
+`tools/import-magpie.js`：把 magpie 的供应商与模型搬进我们自己的配置。
+magpie 两周迭代 400 个版本，跟着它读等于把命交给上游；所以**搬一次，之后独立演进**，
+它变了自己再跑一遍同步。
+
+三个数据来源有优先级，因为单看 `providers.json` 会漏模型：
+
+| 来源 | 用途 |
+|---|---|
+| `providers.json` | 供应商基址、密钥、官方声明的模型 |
+| `stash.json` | magpie 写进 pi 的模型表 —— `codex-for-me` 在 `providers.json` 里 `models` 是空的，模型名只存在这里 |
+| `usage.jsonl` | 最后兜底：真被调用过的模型名 |
+
+`off: true` 且没有密钥的（`copilot`）跳过 —— 那是空壳占位。
+同名模型被 ≥2 家提供时生成 `group/auto-<模型>` 路由组，等价于 magpie 的 `auto/<model>`。
+
+幂等设计有两处必须当心：
+
+- **密钥按内容去重**：`cctq3` 的 `key` 与 `keys[0]` 是两把不同的 key（同名站点两个账号），
+  都要留住；而重复跑不能变成四把。
+- 🔴 **默认供应商要在 `addProvider` 之前算**：`addProvider` 有副作用 ——
+  加第一家时会把 `defaultProvider` 设成它自己。加完再判断「原来有没有默认」
+  就永远判成「已有」，于是脚本报 `rsu`、落盘却是第一家（当场踩过）。
 
 routing 模式 `smart` / `pace` 依赖配额窗口探测（magpie 自己探测余额与重置时刻），
 OpenSession **不探测余额**，所以这两种**降级为 order / usage 并在界面上如实标注 `degraded`**，

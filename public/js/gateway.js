@@ -153,7 +153,7 @@ function gwProviderRow(p) {
   const keys = p.keys.length
     ? `<div class="gwkeys">${p.keys.map((k, i) => `
         <div class="gwkey">
-          <span class="kn">${esc(k.name || "key#" + (i + 1))}</span>
+          <span class="kn">${k.name ? esc(k.name) : "#" + (i + 1)}</span>
           <code>${esc(k.mask)}</code>
           <button onclick="gwRemoveKey('${escAttr(p.id)}',${i})" title="删除这把密钥">✕</button>
         </div>`).join("")}</div>`
@@ -574,11 +574,19 @@ async function gwTestProvider(id, btn) {
       body: JSON.stringify({ action: "test", id }),
     });
     if (r.ok) {
-      toast(`${id} 连通 · ${r.status} · ${r.ms}ms · ${r.model}`);
+      // 换过模型时要说明「前几个不通、这个通了」—— 否则用户以为第一个就是好的
+      const skipped = (r.attempts || []).filter((a) => !a.ok);
+      const tail = skipped.length
+        ? `（${skipped.map((a) => a.model).join("、")} 不通，换到这个）`
+        : "";
+      toast(`${id} 连通 · ${r.status} · ${r.ms}ms · ${r.model}${tail}`);
       btn.textContent = `${r.ms}ms ✓`;
     } else {
-      // 失败时把上游原话带出来 —— "密钥无效" 和 "模型不存在" 是两种完全不同的修法
-      toast(`${id} 失败 ${r.status || ""}：${String(r.error || "").slice(0, 70)}`);
+      // 失败时把上游原话带出来 —— "密钥无效" 和 "模型不存在" 是两种完全不同的修法。
+      // 试过多个模型时列出各自的状态，让用户能分清「整站不通」与「模型全下线」。
+      const tried = (r.attempts || []).map((a) => `${a.model}=${a.status || "ERR"}`).join("，");
+      const more = r.total > r.tried ? `（共 ${r.total} 个模型，只试了前 ${r.tried} 个）` : "";
+      toast(`${id} 失败 ${r.status || ""}：${String(r.error || "").slice(0, 50)}${tried ? " · " + tried : ""}${more}`);
       btn.textContent = "失败 ✕";
     }
   } catch (e) {
