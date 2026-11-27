@@ -253,6 +253,36 @@ NAT 之后的机器没有公网入口时，这条隧道**建立不起来**——
 > 另外：从 WorkBuddy 的 Bash 会话里启动的 GUI 进程会随命令返回被清理掉。
 > 日常请点**左侧导航栏图标**或**桌面图标**，那是在你自己的桌面会话里跑，不受这个限制。
 
+## 重写历史为什么删不干净（2026-11-27 实测）
+
+`git filter-branch` 改完作者信息、force push 之后，从远端仍能 `git fetch <旧SHA>` 拿到旧提交。
+根因不在分支，而在 **GitHub 给已合并 PR 永久保留的 `refs/pull/N/head`**。
+
+实测结论：
+
+| 尝试 | 结果 |
+|---|---|
+| `git push origin --delete refs/pull/1/head` | `deny updating a hidden ref` |
+| REST `DELETE /repos/…/pulls/1` | 404（**GitHub 没有删除 PR 的端点**） |
+| GraphQL | 只有 `closePullRequest`，没有 `deletePullRequest` |
+| 等 GitHub 自动 GC | 无效，只要 PR 在，ref 就一直在 |
+
+**只要有一个提交是某个已合并 PR 的祖先，整条旧链就被这个 ref 撑着，永远可被匿名下载**——
+包括 `GET /commit/<sha>.patch`，它会把 `From: 真实姓名 <公司邮箱>` 原样吐出来，不需要登录。
+
+唯一的彻底解法是**删库重建**（`tools/rebuild-remote-repo.sh`）：
+
+1. 网页 Settings → Danger Zone → Delete this repository
+2. 新建同名空库（**不要**勾 README / .gitignore / license，否则多一个初始提交）
+3. `bash tools/rebuild-remote-repo.sh <owner/repo>`
+
+代价：star 数、创建时间、PR/issue 记录清零。所以**发布前先想清楚**——
+一旦推了带真实邮箱的提交并开了 PR，再改就只剩删库这条路。
+
+> 顺带两个坑：① 细粒度 PAT 不能建个人仓库、也改不了仓库设置（403），
+> 删库建库这类操作必须用经典 token（勾 `repo` + `delete_repo`）或网页手动做；
+> ② 删库前务必确认能建回来——`POST /user/repos` 先用一次性库试，别删完才发现没权限。
+
 ## 目录结构
 
 ```
@@ -271,7 +301,8 @@ opensession/
 │   └── opensession-256.png     文档用大图
 ├── tools/
 │   ├── make-icon.py            从零生成 ico / icns / png（PIL，4× 超采样抗锯齿）
-│   └── tunnel-client.sh        客户端侧 SSH 隧道脚本（另一台设备访问本机用，见下节）
+│   ├── tunnel-client.sh        客户端侧 SSH 隧道脚本（另一台设备访问本机用，见下节）
+│   └── rebuild-remote-repo.sh  删库重建后重推干净历史（发布前体检 + 远端复查）
 ├── bin/
 │   ├── opensession-service     服务 wrapper：探测 node、补 PATH 与运行时环境、exec server
 │   ├── opensession-open        开窗口：探活 → 拉起 → Chrome 独立大窗口（Linux）
