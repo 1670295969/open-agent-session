@@ -871,6 +871,14 @@ details.toolcall .tfbody {
   content: "▾"; color: var(--dim); font-size: 11px; flex-shrink: 0; line-height: 1;
 }
 #inputbar .dd.open .ddbtn { border-color: rgba(91, 157, 255, .65); }
+/* 没读到模型清单：边框虚线 + 文字变暗，让「只有默认」看起来像是数据缺失，
+   而不是控件坏了。不写死颜色以外的表现，避免和 hover / open 打架。 */
+#inputbar .dd.nocat .ddbtn { border-style: dashed; color: var(--dim); cursor: help; }
+#inputbar .dd.nocat .ddlist::after {
+  content: "未读到模型清单，只能用默认模型 · 指向网关后可选全池子";
+  display: block; padding: 9px 13px; font-size: 12.5px; color: var(--dim);
+  white-space: normal; line-height: 1.5;
+}
 #inputbar .ddlist {
   display: none; position: absolute; bottom: calc(100% + 8px); right: 0; left: auto;
   min-width: 460px; max-width: min(620px, 92vw); max-height: 380px; overflow-y: auto;
@@ -878,6 +886,16 @@ details.toolcall .tfbody {
   box-shadow: 0 16px 44px rgba(0, 0, 0, .68); padding: 6px; z-index: 60;
 }
 #inputbar .selcol.col-effort .ddlist { min-width: 260px; }
+/* 🔴 窄屏放不下 460px：下拉是 right:0 定位的固定宽度，一旦超过视口左边界，
+   左边一截就被裁掉（360 宽实测 x 起点 -122，模型名整段看不见）。
+   这里只收窄宽度，横向位置由 embed.js 的 clampDD() 在打开时夹进视口 ——
+   纯 CSS 夹不住：两个下拉在栏里的横向位置不同（模型在左、强度在右），
+   同一个 left/right 值对它们的效果不一样。 */
+@media (max-width: 640px) {
+  #inputbar .ddlist {
+    min-width: 0; max-width: calc(100vw - 24px); width: calc(100vw - 24px);
+  }
+}
 #inputbar .dd.open .ddlist { display: block; }
 #inputbar .ddopt {
   padding: 9px 13px; font-size: 14.5px; color: var(--txt); border-radius: 7px;

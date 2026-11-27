@@ -23,21 +23,67 @@ function inputBarHtml(embedOn) {
 }
 
 // ---- 自绘下拉（原生 <select> 弹层宽度不可控，故自己画） ----
+/* 把弹层夹进视口。
+   弹层默认 right:0（右边缘贴按钮），但模型下拉在输入栏左侧、强度在右侧，
+   宽度又远大于按钮（桌面 460、手机整行），于是窄屏上左边缘会被推出视口，
+   左边一截（正是模型名开头）看不见。纯 CSS 夹不住 —— 两个下拉的基准点不同。
+   这里按实测矩形算需要平移多少，用 left/right 覆盖回来。 */
+function clampDD(box) {
+  const list = box.querySelector(".ddlist");
+  if (!list) return;
+  // 先清掉上次的补偿，否则会越算越偏
+  list.style.left = "";
+  list.style.right = "";
+  const r = list.getBoundingClientRect();
+  const vw = document.documentElement.clientWidth;
+  const pad = 8;
+  let shift = 0;
+  if (r.left < pad) shift = pad - r.left;              // 左边出去了，往右推
+  else if (r.right > vw - pad) shift = (vw - pad) - r.right;  // 右边出去了，往左拉
+  if (!shift) return;
+  // 用「相对当前的偏移」写回，弹层是 absolute 定位于按钮，负 left 即向左平移
+  const baseLeft = r.left - (box.getBoundingClientRect().left);
+  list.style.left = Math.round(baseLeft + shift) + "px";
+  list.style.right = "auto";
+}
+
 function toggleDD(id) {
   const box = document.getElementById(id);
   if (!box) return;
   const wasOpen = box.classList.contains("open");
   closeDD();
-  if (!wasOpen) box.classList.add("open");
+  if (!wasOpen) {
+    box.classList.add("open");
+    clampDD(box);
+  }
 }
 
 function closeDD() {
   document.querySelectorAll("#inputbar .dd.open").forEach((b) => b.classList.remove("open"));
 }
 
+// ---- 模型 / 强度选择的记忆 ----
+// 按「工具」分开记，存 localStorage（和侧栏折叠、命令显示的偏好一致）。
+// 为什么不全局记一份：claude 的模型 id 给 codex 会直接报错，
+// 所以 key 里必须带工具名。
+function prefKey(kind, tool) { return "opensession.pick." + kind + "." + tool; }
+
+function prefGet(kind, tool) {
+  try { return localStorage.getItem(prefKey(kind, tool)) || ""; } catch { return ""; }
+}
+
+function prefSet(kind, tool, value) {
+  try {
+    if (value) localStorage.setItem(prefKey(kind, tool), value);
+    else localStorage.removeItem(prefKey(kind, tool));
+  } catch {}
+}
+
 function pickDD(kind, value, label, el) {
+  const tool = state.active && state.active.tool;
   if (kind === "model") state.selModel = value;
   else state.selEffort = value;
+  if (tool) prefSet(kind, tool, value);
   const box = document.getElementById("dd-" + kind);
   if (box) {
     const span = box.querySelector(".ddbtn > span");
@@ -56,6 +102,20 @@ async function ensureModelCatalog() {
     state.modelCatalog = { claude: [], codex: [], pi: [], efforts: {} };
   }
   return state.modelCatalog;
+}
+
+/* 丢掉前端与后端的双层缓存重取。指向 / 还原 agent 之后必须走这条路：
+   后端有 10 分钟缓存，前端还缓存着一整份，只清一层都还是旧清单。
+   重取后若输入栏正开着，立刻按新清单重画下拉。 */
+async function gwRefreshModelCatalog() {
+  state.modelCatalog = null;
+  try {
+    state.modelCatalog = await (await fetch("/api/models?force=1")).json();
+  } catch { /* 拉不到就下次 ensure 时再试，不该挡住指向操作 */ }
+  if (document.getElementById("inputbar") &&
+      document.getElementById("inputbar").classList.contains("show")) {
+    await fillEmbedSelectors();
+  }
 }
 
 // 选项元素用 DOM 构造，避免拼字符串时的引号转义问题
@@ -84,17 +144,38 @@ async function fillEmbedSelectors() {
   const models = cat[tool] || [];
   const efforts = (cat.efforts && cat.efforts[tool]) || [];
 
-  fillList(mlist, "model", [{ value: "", label: "默认", selected: true }].concat(
-    models.map((m) => ({ value: m.id, label: m.label || m.id, selected: false }))));
-  fillList(elist, "effort", [{ value: "", label: "默认", selected: true }].concat(
-    efforts.map((x) => ({ value: x, label: x, selected: false }))));
+  /* 🔴 这里以前无条件把 selModel / selEffort 清成空。
+     而 openSession() 每次重绘都会走到这儿（发完一条消息也会），
+     于是「选好模型 → 发送 → 显示回默认」，看着就是「模型改不了」。
+     现在按工具各记一份：同一工具内重绘保留，换了工具才换另一套。
+     跨工具绝对不能串 —— 把 claude 的模型 id 塞给 codex，CLI 直接报错。 */
+  if (state.selTool !== tool) {
+    state.selTool = tool;
+    state.selModel = prefGet("model", tool);
+    state.selEffort = prefGet("effort", tool);
+  }
+  // 记录里可能留着一个已经下线 / 被删掉的模型，那就退回默认，别让下拉显示一个不存在的名字
+  if (state.selModel && !models.some((m) => m.id === state.selModel)) state.selModel = "";
+  if (state.selEffort && !efforts.includes(state.selEffort)) state.selEffort = "";
 
-  state.selModel = "";
-  state.selEffort = "";
+  const curM = models.find((m) => m.id === state.selModel);
+  fillList(mlist, "model", [{ value: "", label: "默认", selected: !state.selModel }].concat(
+    models.map((m) => ({ value: m.id, label: m.label || m.id, selected: m.id === state.selModel }))));
+  fillList(elist, "effort", [{ value: "", label: "默认", selected: !state.selEffort }].concat(
+    efforts.map((x) => ({ value: x, label: x, selected: x === state.selEffort }))));
+
   const mb = document.querySelector("#dd-model .ddbtn > span");
   const eb = document.querySelector("#dd-effort .ddbtn > span");
-  if (mb) mb.textContent = "默认";
-  if (eb) eb.textContent = "默认";
+  if (mb) mb.textContent = curM ? (curM.label || curM.id) : "默认";
+  if (eb) eb.textContent = state.selEffort || "默认";
+  // 列表为空时必须能看出来「不是坏了，是这家没有可选清单」，
+  // 否则下拉里只有「默认」一项，用户只会觉得控件失灵。
+  const dd = document.getElementById("dd-model");
+  if (dd) {
+    dd.classList.toggle("nocat", models.length === 0);
+    dd.title = models.length ? "" :
+      "没有读到 " + tool + " 的模型清单，只能用默认模型。指向网关后这里会列全池子的模型。";
+  }
 }
 
 // 点击空白处收起弹层

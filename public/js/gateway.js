@@ -659,6 +659,7 @@ async function gwApplyAgent(agent, btn) {
     });
     toast(`${agent} 已指向网关，备份：${String(r.backup || "").split("/").pop()}`);
     await gwRenderAgents();
+    await gwRefreshModelCatalog();
   } catch (e) { toast("失败：" + e.message); }
   finally { btn.disabled = false; }
 }
@@ -673,6 +674,7 @@ async function gwRestoreAgent(agent, btn) {
     });
     toast(agent + " 已还原");
     await gwRenderAgents();
+    await gwRefreshModelCatalog();
   } catch (e) { toast("失败：" + e.message); }
   finally { btn.disabled = false; }
 }

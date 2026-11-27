@@ -678,11 +678,63 @@ zstd -dc f                                     // 143768 B → 718562 B（正确
 `thread.started.thread_id`；pi 用 `--session <自定路径>`；dsh 用 `--session-id <已有 id>`，
 新建时**不传**该参数、靠 `--json` 首行回带。
 
-### 模型下拉为空
+### 模型下拉为空 / 选了模型又变回默认
 
-`lib/models.js` 里 `EFFORTS.dsh = []`、`modelCatalog.dsh = []`——dsh 的模型清单在
-`~/.dsh/profiles/*.yaml` 里，为了不引 YAML 解析库（本项目零依赖），下拉留空，
-前端遇到空数组自动隐藏。想指定模型直接在输入栏里用 `-m <name>` 或改 profile。
+先说结论：这两件事一个是**没数据**，一个是**数据被重置**，症状都是「模型改不了」。
+
+**1. 下拉里只有「默认」——没数据。**
+
+`lib/models.js` 给四家各找一个数据源，任何一家取不到就会只剩「默认」：
+
+| 工具 | 来源 | 取不到时的兜底 |
+|---|---|---|
+| claude | `~/.claude/settings.json` 的 `modelPicker.options` | 无（该文件由 agent 自己维护） |
+| codex | `~/.codex/magpie-models.json` | 网关供应商清单（见下） |
+| pi | `pi --list-models`（输出走 stderr） | 无（工具不在 PATH 时就是空） |
+| dsh | `~/.dsh/profiles/headless/cordis.patch.yml` | 无（文件不在就没有） |
+
+🔴 **codex 那格是坑最多的一处**。`magpie-models.json` 只在 magpie 托管 codex 时存在
+（还要求 `config.toml` 里有 `model_catalog_json` 指向它）。magpie 一旦不托管、或用户换回自己的
+中转站配置，文件就没了 —— codex 下拉直接变空。所以加了按 `config.toml` 反查的兜底：
+读顶层 `model_provider`，找到那家的 `base_url`，然后
+
+- 指向本网关（`127.0.0.1:8347`）或 magpie（`:3425`）→ 列 `<provider>/<model>` 与 `group/<name>`；
+- 直连某家上游 → 只列**那一家**的裸模型名（`-m` 只吃裸名，列别家的也跑不通）。
+
+**2. 选完又回「默认」——数据被重置。**
+
+`fillEmbedSelectors()` 原来无条件把 `state.selModel` 清空。而 `openSession()` 每次重绘都会调它，
+**发完一条消息也会**，于是「选好 → 发送 → 回默认」。现在按工具各记一份
+（`localStorage["opensession.pick.model.<tool>"]`），同一工具重绘保留、换工具才换另一套。
+跨工具绝不能串：claude 的模型 id 塞给 codex，CLI 直接报错。
+
+记录里留着一个已下线 / 被删掉的模型时会自动退回默认，不会显示一个不存在的名字。
+
+**3. dsh 只能用 `--patch` 换模型，没有 `-m`。**
+
+实测 `dsh --profile headless -m x` → `{"type":"error","message":"unknown option '-m'"}`；
+`--reasoning` 同样没有。dsh headless 只认 profile 里的 `agent-default-model`。
+唯一办法是启动器的 `--patch <覆盖层>`：
+
+```bash
+dsh --patch model.yml --profile headless --json -   # --patch 必须在 --profile 之前
+```
+
+所以选 dsh 的模型 = 生成一个只写 `model:` 的临时 patch 文件，跑完即删（`embed/index.js` 的
+`dropPatch()`）。**不要带 `reasoningEffort`**：各家模型支持的档位不同，实测 `GLM-5.3-Flash`
+收到 `high` 直接报 `UNSUPPORTED_REASONING_EFFORT`，不指定就沿用 profile 自己的默认。
+
+dsh 的模型清单从 profile 里扫出来（`providers → <name> → models → - id:`）。
+零依赖，用缩进锁定做浅解析：文件末尾还有 `- insert:` 段的 `- id: magpie-mcp-*` 长得一模一样，
+不锁缩进就会把 MCP 服务器名当成模型列出来。
+
+**4. 窄屏下弹层被裁掉左边。**
+
+下拉是 `right:0` 定位的固定宽度（桌面 460px 起）。手机上按钮离左边近、弹层又远宽于视口，
+左边缘就被推出屏幕，正好把模型名开头裁掉（360 宽实测 `x` 起点 `-122`）。
+宽度靠 CSS 收窄到 `calc(100vw - 24px)`，横向位置由 `embed.js` 的 `clampDD()` 在打开时按实测
+矩形夹进视口 —— 纯 CSS 夹不住，因为模型下拉在输入栏左侧、强度下拉在右侧，同一个 `left/right`
+值对两者效果不同。
 
 ## 空会话（只有元数据、没有对话）
 

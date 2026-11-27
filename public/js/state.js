@@ -14,6 +14,9 @@ const state = {
   modelCatalog: null,
   selModel: "",
   selEffort: "",
+  // 上次填下拉时用的是哪个工具的清单。换了工具才重置选择，
+  // 同一工具重绘（发完消息会重绘）必须保留 —— 否则选好模型一发就回默认。
+  selTool: null,
   selectMode: false, // 多选删除模式
   selected: new Set(), // 已勾选的 file 集合
   mdOff: false,      // 正文是否关闭 Markdown 渲染（退回纯文本）
