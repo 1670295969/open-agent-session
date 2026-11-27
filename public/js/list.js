@@ -71,6 +71,10 @@ function itemEl(s, withBadge) {
 
 
 function renderList() {
+  // 手机档「筛选」按钮上的条件摘要跟着列表一起更新：
+  // 类型 / 时间 / 搜索词都只影响列表，挂在这里一次覆盖三条路径，
+  // 不用在每个 setTypeFilter / bindTimeChips / 搜索回调里各补一行（漏一个就不同步）。
+  if (typeof updateFilterBtn === "function") updateFilterBtn();
   // 全文搜索模式：列表位置交给搜索结果渲染。
   // 这里必须早返回 —— 否则下面会把搜索结果整片换成普通会话列表，
   // 用户搜完看到的还是全量列表，等于搜索没生效。

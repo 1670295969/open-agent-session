@@ -40,9 +40,43 @@ function backToList() {
   applyMobileView(false);
 }
 
+// ---- 手机档：筛选区折叠 ----
+// 手机上「统计 + 工具 chip + 时间 chip」是三层，合计近 200px，列表被挤到只剩两三条。
+// 折叠后只留一行按钮，按钮里带当前条件摘要，收起也知道列表为什么少。
+// 状态挂 <html>.f-open（和 m-view 同理：正文/列表反复重绘，状态类必须放更高层）。
+// 桌面档 #fbtn 恒为 display:none，且所有隐藏规则都在 640px 的媒体查询里，
+// 所以桌面端加了这套东西以后布局零变化。
+function toggleFilters() {
+  state.filtersOpen = !state.filtersOpen;
+  document.documentElement.classList.toggle("f-open", state.filtersOpen);
+  const btn = $("#fbtn");
+  if (btn) btn.setAttribute("aria-expanded", state.filtersOpen ? "true" : "false");
+}
+
+// 把当前筛选条件写进按钮摘要。收起状态靠它传达信息，展开时是个快捷回显。
+function updateFilterBtn() {
+  const btn = $("#fbtn");
+  if (!btn) return;
+  const parts = [];
+  const tool = state.typeFilter && state.typeFilter !== "all"
+    ? (TOOL_LABELS[state.typeFilter] || state.typeFilter) : "";
+  if (tool) parts.push(tool);
+  if (state.timeFilter) parts.push(state.timeFilter === 1 ? "今天" : state.timeFilter + " 天");
+  const q = ($("#search") && $("#search").value || "").trim();
+  if (q) parts.push("“" + (q.length > 8 ? q.slice(0, 8) + "…" : q) + "”");
+  const sum = $("#fbtsum");
+  if (sum) sum.textContent = parts.length ? parts.join(" · ") : "全部";
+  // 摘要非默认（有筛选/有搜索）→ 按钮描边高亮，提示「列表被筛过」
+  btn.classList.toggle("on", parts.length > 0);
+}
+
 function initMobile() {
   // 手机上先看列表（不记忆偏好：每次进来都是列表更符合预期）
   applyMobileView(false);
+  // 筛选区默认收起：手机上它占的高度比列表还多，谁要找筛选会主动点。
+  // 桌面档这段状态无害（CSS 忽略），但不影响用户，也不写 localStorage。
+  state.filtersOpen = false;
+  document.documentElement.classList.remove("f-open");
   // 跨档位缩放时的两种方向都要处理，只做一边会留下视觉 bug：
   //   ① 手机 → 桌面：必须清掉 m-view，否则 #main 的 translateX(0) 残留，
   //      但桌面档 CSS 不覆盖 position:fixed，正文会盖在列表上。

@@ -84,6 +84,14 @@ html.side-collapsed #bar { padding-left: 108px; }
 #statsrow {
   display: flex; align-items: center; gap: 8px; padding: 4px 16px 7px;
 }
+/* 筛选区外壳：桌面端用 display:contents 让三个子块（statsrow / typebar / timebar）
+   直接作为 #side 的 flex 项参与排布 —— 加这层等于没加，布局与改前逐像素一致。
+   只有手机横屏那种矮屏幕才会把外壳变成可滚动盒子（见文末 max-height:480px 段），
+   否则「统计三行 + 两行 chip」会把 #list 压到 0 高，列表整片消失（640×360 实测）。 */
+#filters { display: contents; }
+/* 手机档的「筛选」折叠开关。桌面端恒隐藏（display:none），
+   所以 #statsrow 的 flex 排版和以前一模一样，一个像素都不动。 */
+#fbtn { display: none; }
 /* 计数用**三列网格**而不是 flex-wrap。
    原因：五个工具名长度差很多（Pi 短、DeepSeek 长），flex-wrap 在 400px 侧栏里
    会把最后一个（Hermes）单独挤到第二行，看起来像排版出错。
@@ -1121,8 +1129,7 @@ button.danger:disabled { opacity: .55; cursor: default; }
   html.side-collapsed #handle { display: none; }
   html.side-collapsed #bar { padding-left: 14px; }
 
-  /* 顶栏：手机上一行放不下四个按钮，让 info 独占一行，按钮排第二行 */
-  #bar { padding: 9px 12px; gap: 6px; }
+  /* 顶栏：手机上一行放不下四个按钮，让 info 独占一行，按钮排第二行 */  #bar { padding: 9px 12px; gap: 6px; }
   #bar .info { flex: 1 1 100%; min-width: 0; font-size: 12.5px; }
   #bar button { font-size: 12px; padding: 5px 9px; }
   #bar .cwd { font-size: 12.5px; gap: 5px; }
@@ -1175,6 +1182,51 @@ button.danger:disabled { opacity: .55; cursor: default; }
 
   /* iOS 上 100vh 会被地址栏裁掉，用 dvh 兜住 */
   body { height: 100dvh; }
+
+  /* ---------- 筛选区折叠 ----------
+     统计三行 + 工具 chip + 时间 chip 在 390px 上要吃掉近 200px，
+     列表只剩两三条可见。默认全收，只留一颗「筛选 · 当前条件」按钮。
+     收起时收起哪些：统计行里的计数、工具 chip、时间 chip 三块一起藏；
+     展开后照旧（统计两列 + 六宫格 chip），和桌面长的完全一样。 */
+  #statsrow { padding: 4px 12px 6px; gap: 7px; }
+  /* 展开时按钮独占一行、计数与「多选」排到下一行。
+     不这么做的话 fbtn(flex:1) 会把统计挤到只剩 120px，
+     「DeepSeek 21」在网格里被 ellipsis 成「DeepSee…」，等于白展开。
+     收起时按钮单独一行本来就够宽，不需要换行。 */
+  html.f-open #statsrow { flex-wrap: wrap; }
+  html.f-open #fbtn { flex: 1 0 100%; }
+  #fbtn {
+    display: inline-flex; align-items: center; gap: 5px;
+    flex: 1; min-width: 0; justify-content: flex-start;
+    /* 8px 纵向内边距 → 约 37px 高。原 5px 只有 31px，触屏上偏矮不好点 */
+    padding: 8px 11px; font-size: 12.5px; border-radius: 12px;
+    background: var(--panel2); color: var(--dim);
+    white-space: nowrap; overflow: hidden;
+  }
+  #fbtn .fbt-ico { font-size: 12px; opacity: .85; }
+  /* 摘要吃掉剩余宽度并省略：条件是长串（如「Claude · 今天」）时不把箭头挤掉 */
+  #fbtn .fbt-sum {
+    flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+    color: #c3cbd7; font-weight: 550;
+  }
+  #fbtn .fbt-arrow { flex-shrink: 0; font-size: 10px; transition: transform .16s; }
+  /* 有非默认筛选时按钮本身高亮，收起状态也能一眼看出「列表被筛过」 */
+  #fbtn.on { color: var(--accent); border-color: var(--accent); }
+  #fbtn.on .fbt-ico { color: var(--accent); opacity: 1; }
+  html.f-open #fbtn .fbt-arrow { transform: rotate(180deg); }
+
+  /* 收起态：三块内容全藏，只停 #fbtn 一行。
+     用 <html>.f-open 而不是 :has()，Safari 15 以下 :has() 不支持。 */
+  html:not(.f-open) #stats,
+  html:not(.f-open) #typebar,
+  html:not(.f-open) #timebar { display: none; }
+
+  /* 展开态：chip 行左右收紧一点，跟筛选按钮对齐（都在 12px） */
+  #typebar { padding: 0 12px 8px; gap: 5px; }
+  #timebar { padding: 0 12px 9px; }
+  /* 手指点击区：原 3px/11px 在手机上太薄，容易点空 */
+  #typebar .tchip { padding: 7px 8px; font-size: 12.5px; }
+  #timebar .tchip { padding: 5px 12px; font-size: 12px; }
 }
 
 /* 手机上「返回列表」按钮：只有手机档且已选中会话时出现 */
@@ -1194,4 +1246,17 @@ button.danger:disabled { opacity: .55; cursor: default; }
   #bar { padding: 6px 12px; }
   #head { padding: 8px 12px 6px; }
   #head h1 { margin-bottom: 6px; }
+  /* 矮屏（横屏手机 640×360 这类）展开筛选会把列表压到 0 高。
+     #filters 从 display:contents 换成真的盒子并封顶 40dvh + 内部滚动：
+     列表至少保住剩下的大半屏，筛选区自己滚。
+     只在展开态封顶；收起时只有一行按钮，不占地方。 */
+  html.f-open #filters {
+    display: block; max-height: 40dvh; overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    border-bottom: 1px solid var(--border);
+  }
+  /* 内部已经滚了，就不要再让 statsrow 换行占两行 —— 省下的正是列表高度 */
+  html.f-open #statsrow { flex-wrap: nowrap; }
+  html.f-open #fbtn { flex: 0 1 auto; min-width: 96px; }
+  #list { min-height: 120px; }
 }

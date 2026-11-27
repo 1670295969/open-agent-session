@@ -27,6 +27,7 @@ const state = {
   searchBusy: false,
   searchSeq: 0,      // 请求序号，丢弃过期响应（连打关键字时后到的旧结果会盖掉新的）
   timeFilter: 0,     // 0 = 全部，否则为「最近 N 天」
+  filtersOpen: false, // 手机档筛选区是否展开（桌面档 CSS 直接忽略此状态）
   // 运行环境信息（后端 /api/trash 返回）：回收站路径与平台名，
   // 删除提示文案、路径缩短都按它走，避免把 Linux 的 ~/.local/share/Trash
   // 写死在页面里给 Windows 用户看

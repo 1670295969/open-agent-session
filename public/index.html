@@ -36,27 +36,41 @@ if ("serviceWorker" in navigator) {
       <button id="smode" onclick="toggleSearchMode()" title="切换搜索范围：标题 / 全文">标题</button>
     </div>
   </div>
-  <div id="statsrow">
-    <div id="stats"></div>
-    <!-- 多选是「操作」不是「筛选」：放在统计行右侧，不占 chip 行的宽度。
-         原来挤在 chip 行末尾，400px 侧栏里会把 Hermes 顶到第二行。 -->
-    <button id="selbtn" onclick="toggleSelectMode()" title="多选后批量删除">☑ 多选</button>
-  </div>
-  <div id="typebar">
-    <span class="tchip on all" data-t="all">全部</span>
-    <span class="tchip codex" data-t="codex">Codex</span>
-    <span class="tchip claude" data-t="claude">Claude</span>
-    <span class="tchip pi" data-t="pi">Pi</span>
-    <span class="tchip dsh" data-t="dsh">DeepSeek</span>
-    <span class="tchip hermes" data-t="hermes">Hermes</span>
-  </div>
-  <div id="timebar">
-    <span class="tlabel">时间</span>
-    <span class="tchip on" data-d="0">不限</span>
-    <span class="tchip" data-d="1">今天</span>
-    <span class="tchip" data-d="7">7 天</span>
-    <span class="tchip" data-d="30">30 天</span>
-  </div>
+  <!-- 筛选区外壳：桌面端是 display:contents（子元素直接参与 #side 的 flex 排布，
+       等于没有这层），只在手机横屏那种矮屏幕上才变成可滚动的盒子 ——
+       否则统计+两行 chip 会把 #list 压到 0 高，列表整片消失。 -->
+  <div id="filters">
+    <div id="statsrow">
+      <!-- 手机档的筛选开关：桌面端 display:none，所以下面三行的原有布局完全不变。
+           手机上「统计 + 工具 chip + 时间 chip」要占近 200px，把列表挤得只剩几行；
+           折叠后这一行只显示「筛选 · 当前条件」，条件写在按钮里——
+           收起状态也看得出列表为什么少了。状态类挂 <html>.f-open。 -->
+      <button id="fbtn" onclick="toggleFilters()" aria-expanded="false" aria-controls="stats typebar timebar">
+        <span class="fbt-ico">⚙</span><span>筛选</span>
+        <span id="fbtsum" class="fbt-sum">全部</span>
+        <span class="fbt-arrow">▾</span>
+      </button>
+      <div id="stats"></div>
+      <!-- 多选是「操作」不是「筛选」：放在统计行右侧，不占 chip 行的宽度。
+           原来挤在 chip 行末尾，400px 侧栏里会把 Hermes 顶到第二行。 -->
+      <button id="selbtn" onclick="toggleSelectMode()" title="多选后批量删除">☑ 多选</button>
+    </div>
+    <div id="typebar">
+      <span class="tchip on all" data-t="all">全部</span>
+      <span class="tchip codex" data-t="codex">Codex</span>
+      <span class="tchip claude" data-t="claude">Claude</span>
+      <span class="tchip pi" data-t="pi">Pi</span>
+      <span class="tchip dsh" data-t="dsh">DeepSeek</span>
+      <span class="tchip hermes" data-t="hermes">Hermes</span>
+    </div>
+    <div id="timebar">
+      <span class="tlabel">时间</span>
+      <span class="tchip on" data-d="0">不限</span>
+      <span class="tchip" data-d="1">今天</span>
+      <span class="tchip" data-d="7">7 天</span>
+      <span class="tchip" data-d="30">30 天</span>
+    </div>
+  </div><!-- /#filters -->
   <div id="selbar"></div>
   <div id="list"></div>
   <div id="listpager"></div>
