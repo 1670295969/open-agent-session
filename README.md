@@ -199,6 +199,47 @@ journalctl --user -u opensession -f     # 跟日志
 > `.icns` 是按 Apple 的容器格式手写的（`icns` magic + 若干 `OSType/长度/PNG` 块），
 > 所以 Linux 上也能生成和校验，不必依赖只在 macOS 存在的 `iconutil`。
 
+## 从另一台设备访问（SSH 隧道，2026-11-27）
+
+服务入口写死 `server.listen(PORT, "127.0.0.1")`（`opensession-server.js:32`），这是**安全边界不是疏漏**：
+`lib/router.js` 全链路没有任何鉴权，谁连上谁就能读全部会话、删会话、通过 `/api/embed` 在本机执行 CLI。
+
+所以「另一台设备访问」的做法是**把端口借出去**，而不是把监听地址放宽：
+
+```bash
+# 客户端侧（另一台设备）
+ssh -N -L 8347:127.0.0.1:8347 me@<服务端主机>
+# 或者用仓库里的 tools/tunnel-client.sh，带参数校验和 keepalive
+```
+
+前端所有请求都是相对路径（`/api/...`、`js/*.js`，实测 `public/js/` 里没有硬编码 host），
+所以隧道一透，整个界面就完整可用，**前端零改动**。反而比改监听更省事也更安全：浏览器看到的
+仍是 `127.0.0.1`，属安全上下文，`navigator.clipboard` 与 `EventSource` 都不会降级
+（`chat.js` 里那个 `fallbackCopy` 就是给非安全上下文兜底的）。
+
+### 受限密钥：只给转发权，不给 shell
+
+服务端可以在 `~/.ssh/authorized_keys` 里挂一条受限项：
+
+```
+restrict,port-forwarding,permitopen="127.0.0.1:8347",permitopen="localhost:8347",command="/bin/false" ssh-ed25519 AAAA... opensession-tunnel
+```
+
+几个**实测**出来的细节：
+
+| 项 | 行为 |
+|---|---|
+| `restrict` 单独用 | 连端口转发一起禁掉。必须补 `port-forwarding` 才恢复转发，只恢复转发 |
+| `permitopen` 匹配 | **字面**匹配，`localhost:8347` 与 `127.0.0.1:8347` 是两条，客户端写哪个都要能对上 |
+| 越权转发 | 客户端侧**不会**报错（`-L` 是惰性建连），服务端在真正有连接进来时才回 `administratively prohibited: open failed` |
+| `command="/bin/false"` | 带命令的 ssh 退出码 1、无输出 |
+| `[::1]:8347` | 写了也不通——服务只监听 IPv4 回环，与配置无关 |
+
+> 测试这一条要**真发一次 HTTP 请求**才触发建连，光看 `ssh` 进程活着判断不出是否被 `permitopen` 拦了。
+
+NAT 之后的机器没有公网入口时，这条隧道**建立不起来**——这是网络条件，不是代码问题。
+需要公网可达入口（端口映射或公网跳板机），或者换一条自带穿透的通道。
+
 ## 启动浏览器的三个坑（2026-11-22 实测）
 
 1. **uid 必须是 1000**：WorkBuddy sandbox 在 user namespace 里把 uid 映射成 0，Chrome 直接报
@@ -229,7 +270,8 @@ opensession/
 │   ├── opensession.icns        macOS 图标（icp4…ic10，含 1024）
 │   └── opensession-256.png     文档用大图
 ├── tools/
-│   └── make-icon.py            从零生成 ico / icns / png（PIL，4× 超采样抗锯齿）
+│   ├── make-icon.py            从零生成 ico / icns / png（PIL，4× 超采样抗锯齿）
+│   └── tunnel-client.sh        客户端侧 SSH 隧道脚本（另一台设备访问本机用，见下节）
 ├── bin/
 │   ├── opensession-service     服务 wrapper：探测 node、补 PATH 与运行时环境、exec server
 │   ├── opensession-open        开窗口：探活 → 拉起 → Chrome 独立大窗口（Linux）
