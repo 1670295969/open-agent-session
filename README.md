@@ -364,6 +364,41 @@ opensession/
         └── main.js              入口装配（含 ?tool=&q=&full= 预置筛选、平台信息拉取）
 ```
 
+## 响应式：手机 / 平板（2026-11-27）
+
+原先侧栏写死 `width: 400px; min-width: 280px`，CSS 里**一个尺寸断点都没有**。
+实测 390px 手机上 `#side` 直接吃满整屏，`#main` 被挤到 `width: 0`，
+且 `scrollWidth 417 > clientWidth 390` 出现横向滚动条 —— 正文完全不可见。
+
+三档设计（`public/app.css` 末尾）：
+
+| 断点 | 做法 |
+|---|---|
+| `≥901px` | 原样不动（桌面零回归是硬要求） |
+| `641–900px` | 侧栏 `400→280`，`#stats` 降两列，顶栏 `info` 独占一行 |
+| `≤640px` | 抽屉式：列表全屏，`#main` `position:fixed` + `translateX(100%)`，选中会话时 `html.m-view` 让它滑入 |
+
+几个必须知道的点：
+
+- **`html.m-view` 挂在根节点**，理由和 `.side-collapsed` 一样：`#main` 内容反复整体重绘，
+  状态类放在比它高的节点才不会被冲掉。
+- **手机档复用已有的折叠机制**：`html.side-collapsed` 在 `≤640px` 下被强制复位
+  （`margin-left: 0`），否则桌面留下的折叠偏好会让列表也不可见。
+- **跨档缩放两个方向都要处理**，只做一边会留 bug：
+  手机→桌面若不 `applyMobileView(false)`，`translateX(0)` 残留但 CSS 已不 `fixed`，正文盖住列表；
+  桌面→手机若不回落到列表态，`#main` 立刻被推出屏外，用户看到「点了会话正文不见了」（实测 `mainLeft=390`）。
+- **`code.ic` 加 `overflow-wrap:anywhere`**：`white-space:break-spaces` 只管空格，
+  长命令 `adb logcat -v threadtime -s WakeFirstFrame...` 实测撑到 447px 被裁。
+- **🔴 表格千万别加 `display:block`**：那会打回块级布局，单元格失去宽度约束，
+  配上 `anywhere` 后 `first_window_frame_after_display_on` 被折成每行 5 个字符。
+  正确做法是 `.tablewrap` 已有的 `overflow-x:auto` + 单元格 `nowrap`。
+- **`#backbtn` 只在 `≤640px` 且 `m-view` 时 `display:inline-block`**，
+  桌面/平板的 DOM 里有这个节点但 `display:none`，不影响顶栏按钮换行节奏。
+- `body { height: 100dvh }` 兜 iOS 地址栏吃高度；`-webkit-overflow-scrolling:touch` 给抽屉滑动加惯性。
+
+验证覆盖 360 / 390 / 414 / 768 / 834 / 1024 / 1280 / 1440 / 1920 九档：
+全部 `scrollWidth === clientWidth`（无横滚）、0 控制台错误、返回键显隐符合预期。
+
 ## 正文渲染与刷新
 
 **Markdown**：正文默认走 `public/js/md.js` 渲染（零依赖，不引 CDN，断网可用）。支持标题、粗体 / 斜体 / 删除线、行内代码、围栏代码块（右上角带复制按钮）、有序 / 无序列表（可嵌套）、引用、表格（含列对齐）、分隔线、链接。

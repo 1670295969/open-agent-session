@@ -4,6 +4,9 @@
 async function openSession(s) {
   state.active = s;
   renderList();
+  // 手机档：选中会话后把正文滑进来（桌面档 applyMobileView 无副作用，
+  // 因为 CSS 只在 ≤640px 时才会让 #main 位移）
+  if (isPhone()) applyMobileView(true);
   const main = $("#main");
   main.innerHTML = '<div id="chat"><p style="color:var(--dim)">加载中…</p></div>';
   const url = "/api/session?file=" + encodeURIComponent(s.file) + "&tool=" + s.tool;
@@ -212,7 +215,12 @@ function renderChat() {
   // 无法收缩，路径一长就把右侧的条数/跨度整个挤出可视区（overflow:hidden 吞掉）。
   // 同时做成可点的：点一下直接浏览这个目录（正文里的相对路径也靠它兜底，
   // 用户能先确认会话的工作目录到底是哪个）。
-  const bar = '<div id="bar"><div class="info">' +
+  // 手机档专用返回键：CSS 里默认 display:none，只有 ≤640px 且
+  // html.m-view 时才显形，桌面和平板完全看不到这个按钮。
+  // 放在 #bar 最前面，手指够得着的同时不打断既有按钮的换行节奏。
+  const bar = '<div id="bar">' +
+      '<button id="backbtn" onclick="backToList()" title="返回会话列表">‹ 列表</button>' +
+      '<div class="info">' +
       '<div class="cwd">' +
         '<a class="cwdpath" href="#" data-file="' + escAttr(s.cwd || "") + '"' +
           ' title="点击浏览这个目录：' + escAttr(s.cwd || "") + '">📁 ' +

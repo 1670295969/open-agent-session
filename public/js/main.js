@@ -21,6 +21,55 @@ function toggleSide() {
   applySideCollapsed(!state.sideCollapsed, true);
 }
 
+// ---- 手机档：列表 / 正文 两屏切换 ----
+// 桌面上 #side 和 #main 并排；手机屏放不下两个，改成 #main 覆盖整屏滑入。
+// 状态挂在 <html>.m-view：和 side-collapsed 同样的理由，正文会整体重绘，
+// 状态类必须放在比它高的节点上。
+// 只切 class，具体表现交给 CSS 的 @media (max-width:640px)，桌面端完全不受影响。
+function isPhone() {
+  return window.matchMedia("(max-width: 640px)").matches;
+}
+
+function applyMobileView(on) {
+  document.documentElement.classList.toggle("m-view", !!on);
+}
+
+// 手机档返回列表；桌面档等价于「收起侧栏」，没有意义，直接忽略
+function backToList() {
+  if (!isPhone()) return;
+  applyMobileView(false);
+}
+
+function initMobile() {
+  // 手机上先看列表（不记忆偏好：每次进来都是列表更符合预期）
+  applyMobileView(false);
+  // 跨档位缩放时的两种方向都要处理，只做一边会留下视觉 bug：
+  //   ① 手机 → 桌面：必须清掉 m-view，否则 #main 的 translateX(0) 残留，
+  //      但桌面档 CSS 不覆盖 position:fixed，正文会盖在列表上。
+  //   ② 桌面 → 手机：CSS 立刻把 #main 推到屏外，若 m-view 还是 false，
+  //      用户看到的是「点了会话正文不见了」（实测 mainLeft=390）。
+  //      这里回落到列表态，让用户重新点一次，行为可预期。
+  //   ③ 手机档内部换设备（390→414）：保持当前状态不动，别把用户正在读的正文弹掉。
+  const mq = window.matchMedia("(max-width: 640px)");
+  let wasPhone = mq.matches;
+  const onChange = (e) => {
+    if (!mq.matches) {
+      applyMobileView(false);          // 变宽：一定是并排布局
+    } else if (!wasPhone) {
+      applyMobileView(false);          // 刚变窄：回到列表，避免正文凭空消失
+    }
+    wasPhone = mq.matches;
+  };
+  if (mq.addEventListener) mq.addEventListener("change", onChange);
+  else if (mq.addListener) mq.addListener(onChange); // Safari < 14
+  // Esc 也能退出正文（有键盘的平板 / 外接键盘时）
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && isPhone() && document.documentElement.classList.contains("m-view")) {
+      applyMobileView(false);
+    }
+  });
+}
+
 function initSide() {
   let saved = null;
   try { saved = localStorage.getItem(SIDE_KEY); } catch {}
@@ -106,6 +155,7 @@ function initToolPref() {
 
 function boot() {
   initSide();
+  initMobile();
   initToolPref();
   applyUrlPrefs();
   loadEnv();
