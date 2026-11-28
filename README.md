@@ -348,7 +348,8 @@ opensession/
 │       ├── store.js                供应商 / 路由组 / 设置 / 用量；按 mtime 重读
 │       ├── translate.js            canonical(OpenAI Chat) ⇄ chat / responses / anthropic
 │       ├── proxy.js                转发 + 流式状态机（幂等收尾、usage 合并、SSE 分帧）
-│       ├── agents.js               写 claude / codex / pi 配置（备份 + 形状校验 + 还原）
+│       ├── agents.js               写 claude / codex / pi / dsh / hermes 配置（备份 + 形状校验 + 还原）
+│       ├── yamlEdit.js             零依赖 YAML 行编辑（保注释与缩进）
 │       └── api.js                  /api/gw/* 管理接口
 └── public/                      前端
     ├── index.html               骨架
@@ -1007,7 +1008,7 @@ const need = isCmd ? (s.includes("\n") || s.length > 60) : s.length > 120;
 ## 网关：供应商池与协议翻译（2026-11-27）
 
 参照 [`yetone/magpie`](https://github.com/yetone/magpie) 实现的本地 AI 网关。目标只有一句话：
-**把所有供应商收进一个池子，让 claude / codex / pi 通过同一个本地端点用上它们，改配置不改 key。**
+**把所有供应商收进一个池子，让 claude / codex / pi / dsh / hermes 通过同一个本地端点用上它们，改配置不改 key。**
 
 magpie 迭代很快（0.1.4539 → 0.1.4940 只隔两周），所以**不寄生它的 `~/.config/magpie` 私有格式**，
 mtime 一变就可能读崩。OpenSession 自己存一份，语义对齐但格式独立。
@@ -1117,15 +1118,33 @@ OpenSession **不探测余额**，所以这两种**降级为 order / usage 并�
 改任何 agent 配置前**强制备份**到 `~/.config/opensession/agent-backups/`。
 
 界面上每行一个开关（裸滑块，照 magpie 的 Agents 页）：开着时该 CLI 的请求走本网关，
-旁边那个按钮选它用哪个模型。四行之间用分隔线而不是各自一张卡片 ——
-它们本来就是同一张映射表的四行。
+旁边那个按钮选它用哪个模型。五行之间用分隔线而不是各自一张卡片 ——
+它们本来就是同一张映射表的五行。
 
 | Agent | 改动方式 | 基址 | 说明 |
 |---|---|---|---|
 | claude | 逐键改 `settings.json` | `http://127.0.0.1:8347/gw` | **不带 `/v1`**（Anthropic SDK 自己拼 `/v1/messages`） |
 | codex | **TOML 外科手术** | `http://127.0.0.1:8347/gw/v1` | 不引 TOML 解析器（零依赖），只替换顶层 `model` / `model_provider` 两个赋值 + 重写自己的 `[model_providers.opensession]` 段，保住 129 个 `[projects.*]` 段与注释 |
 | pi | 改 `models.json` + settings | `http://127.0.0.1:8347/gw/v1` | 注入 `opensession` 供应商，不动原有的 magpie |
-| dsh | **只读展示，不写** | — | 供应商在 `profiles/*/cordis.patch.yml` 的四层嵌套 YAML 里，零依赖下写它得自带保留缩进的 YAML 编辑器，代价不成比例 |
+| dsh | **YAML 行编辑** | `http://127.0.0.1:8347/gw/v1` | 往 `llm-pi-ai.config.providers` 注入入口 + 改 `agent-default-model`。🔴 **web 与 headless 两份 profile 一起改** |
+| hermes | **YAML 行编辑** | `http://127.0.0.1:8347/gw/v1` | 顶层 `providers.<id>` 加入口 + `model.provider/default` 指向。🔴 **不要动 `model.base_url`** |
+
+**YAML 怎么改的**（`lib/gateway/yamlEdit.js`）：不引 js-yaml，也不做 JSON 往返。
+这两份配置是人写的 —— 有注释、有 `!!js` 表达式、有对齐的缩进、有 `- insert:` 这类
+loader 指令。读成对象再吐出去，注释全丢、`off:`（null）会变成 `off: null`，
+用户的文件就不再是他写的那个文件了。所以只做「按行定位 → 改那一行」，
+其余行一个字节都不碰。能力刻意做得极窄：顶层键、`- id:` 数组项、块内标量读写、插入、删块。
+
+**🔴 dsh 必须两份 profile 一起改**：`profiles/web` 与 `profiles/headless` 是各自独立的
+补丁层。只改一份的话，`dsh web` 走网关而终端里 `dsh headless "跑测试"` 还是旧供应商。
+状态行会把这个不一致显式报出来（`split`），不只显示「已接入」。
+另：`apiKeyEnv` 只是**凭据引用名**，值要写进 `~/.dsh/.env`，否则 dsh 启动报「凭据找不到」。
+
+**🔴 hermes 不要改 `model.base_url`**：第一版改过，结果是「配置看着对、请求打去上游」。
+magpie 的做法是 `model.provider` 换名字、`model.default` 换模型名，
+但 `model.base_url` **保留原来上游的地址**，网关地址只写在 `providers.<id>.base_url`。
+实测这个结构下 hermes 的请求真会打到网关（用量日志 `wire: chat` + 网关模型名）。
+所以「走没走网关」的判定看 `providers.<id>.base_url`，不看 `model.base_url`。
 
 **🔴 基址必须带 `/gw`**。网关的转发路由是 `/gw/v1/{chat/completions,responses,messages}`
 （见上面的端点表），根下的 `/v1/*` 什么都不接 —— 【实测】`POST /v1/messages` 返回 404，

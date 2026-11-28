@@ -389,38 +389,52 @@ async function gwRenderAgents() {
     if (cur.viaGateway) {
       return `<span class="st-on">已接入</span> ${bits.join(" · ")}`;
     }
+    // dsh 有两个 profile，状态不一致时必须说出来：只用 web 版的人会以为
+    // 已经全好了，而终端里 `dsh headless "…"` 还在跑旧供应商。
+    if (cur.split) {
+      const detail = (cur.profiles || [])
+        .map((p) => `${(p.file || "").includes("/headless/") ? "headless" : "web"} ${p.provider || "?"}`)
+        .join(" · ");
+      return `<span class="st-warn">两个 profile 状态不一致</span>
+        <span class="st-dim">${esc(detail)}</span>`;
+    }
     // 没接入：说清楚它现在走的是哪儿，而不是只说「未接入」
-    if (cur.provider) bits.unshift(`provider <code>${esc(cur.provider)}</code>`);
-    if (cur.modelProvider) bits.unshift(`provider <code>${esc(cur.modelProvider)}</code>`);
+    if (cur.provider) bits.unshift(`provider <code>${esc(shortProvider(cur.provider))}</code>`);
+    if (cur.modelProvider) bits.unshift(`provider <code>${esc(shortProvider(cur.modelProvider))}</code>`);
     return `<span class="st-off">未接入</span>
       ${bits.length ? `<span class="st-dim">${bits.join(" · ")}</span>` : ""}`;
   };
 
   // 图标用**首字母**而不是 emoji：本机字体缺 🅰 之类的字形，实测渲染成空心方框。
   // 首字母在任何字体下都在，而且四个字母 C/C/P/D 区分度足够。
-  const ICONS = { claude: "C", codex: "X", pi: "P", dsh: "D" };
+  const ICONS = { claude: "C", codex: "X", pi: "P", dsh: "D", hermes: "H" };
 
   const row = (key, label, cur, supported, extra) => {
     const envVals = cur.models ? [...new Set(Object.values(cur.models).filter(Boolean))] : [];
     const effective = envVals.length === 1 ? envVals[0] : (cur.model || "");
     const val = pick(key, effective);
-    const offCatalog = supported && effective && !inCatalog(effective) && !saved[key];
+    // 「另选」徽标只看**用户选没选**，不看配置文件里的旧值。
+    // 之前按 effective 判断：用户从面板里选好了一个清单内的模型，
+    // 徽标还赖在按钮上（旧模型的锅），看着像没选中。
+    const offCatalog = supported && effective && !inCatalog(effective) && !val;
     const on = supported && cur.viaGateway;
     const showVal = val || (effective && !inCatalog(effective) ? effective : "");
     return `<div class="gwagent${on ? " on" : ""}">
       <span class="ico">${ICONS[key] || "•"}</span>
       <span class="amain">
         <span class="an">${label}</span>
-        <span class="ast">${statusOf(cur)}${extra || ""}
-          ${offCatalog ? `<span class="st-hint">现有模型不在网关清单里，另选一个</span>` : ""}</span>
+        <span class="ast">${statusOf(cur)}${extra || ""}</span>
       </span>
       <span class="apick">
         ${supported
-          ? `<button type="button" class="gwpick${showVal && inCatalog(showVal) ? "" : " empty"}"
+          ? `<button type="button" class="gwpick${showVal && inCatalog(showVal) ? "" : " empty"}${offCatalog ? " warn" : ""}"
                onclick="gwPickModel(event,'${key}')"
                aria-haspopup="listbox" aria-expanded="false"
-               title="${showVal ? escAttr(showVal) : "选择一个模型"}">
+               title="${offCatalog
+                 ? escAttr(`当前生效的 ${effective} 不在网关清单里，点开另选一个才能接入`)
+                 : (showVal ? escAttr(showVal) : "选择一个模型")}">
                <span class="pv">${showVal ? esc(showVal) : "选择模型…"}</span>
+               ${offCatalog ? `<span class="pkbadge">另选</span>` : ""}
                <span class="caret">▾</span>
              </button>
              <input class="gwm" id="gwm-in-${key}" data-agent="${key}" type="hidden"
@@ -450,7 +464,8 @@ async function gwRenderAgents() {
         ${row("claude", "Claude Code", a.claude, true)}
         ${row("codex", "Codex", a.codex, true)}
         ${row("pi", "Pi", a.pi, true)}
-        ${row("dsh", "DeepSeek", a.dsh, false)}
+        ${row("dsh", "DeepSeek", a.dsh, true)}
+        ${row("hermes", "Hermes", a.hermes, true)}
       </div>
       <div class="gwnote">
         <b>开关关闭时配置回到「开启之前那一刻」</b>，不是回到厂商默认 —— 你原来配的中转站不会丢。
@@ -458,7 +473,9 @@ async function gwRenderAgents() {
         改动前一律强制备份到 <code>~/.config/opensession/agent-backups/</code>，
         只改自己写的那几个键，其余（modelPicker / statusLine / 其他 provider / 注释与段顺序）原样保留。
         <br><b>地址带 <code>/gw</code></b>：网关入口是 <code>/gw/v1/*</code>，根下的 <code>/v1/*</code> 不接请求。
-        <br><b>dsh 没有开关</b>：供应商在四层嵌套 YAML 里，零依赖写它代价不成比例，只显示当前指向。
+        <br><b>dsh 会同时改 web 与 headless 两份 profile</b>：只改一份的话，终端里
+        <code>dsh headless "…"</code> 还在用旧供应商。
+        <br><b>YAML 文件按行改，不重排</b>：注释、缩进、<code>!!js</code> 表达式、段顺序都原样留着。
       </div>
     </div>
   `;
@@ -476,7 +493,23 @@ function shortPath(p) {
 // https 保留：那说明它指向的是外部服务，性质不同，不该被抹掉。
 function shortBase(u) {
   const s = String(u || "");
-  return s.replace(/^http:\/\//i, "");
+  // 本机地址去协议（网关只监听 127.0.0.1，协议没信息量，却占 7 个字符）
+  if (/^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])/i.test(s)) {
+    return s.replace(/^https?:\/\//i, "");
+  }
+  // 外部地址去协议、去路径，只留主机 —— 状态行不是配置面板，
+  // 用户在这里只需要知道「它现在打到哪家」，完整地址在配置文件里。
+  try {
+    const u2 = new URL(s);
+    return u2.host;
+  } catch { return s; }
+}
+
+// hermes 的 provider 名带 `custom:` 前缀（`custom:moapi`），
+// 那是它内部区分「内置 provider」与「自定义 provider」的写法。
+// 状态行里显示 `custom:moapi` 只会让人以为多了个叫 custom 的家。
+function shortProvider(p) {
+  return String(p || "").replace(/^custom:/i, "");
 }
 
 // ---- 模型选择面板（参照 magpie 的 picker）----
@@ -546,7 +579,7 @@ function gwPickModel(ev, agent) {
   pop.className = "gwpicker";
   // 面板要有标题：手机档面板会盖住整片列表，不写「给谁选」的话
   // 用户只看得见一列模型名，不知道自己在改哪一行的配置。
-  const LABELS = { claude: "Claude Code", codex: "Codex", pi: "Pi", dsh: "DeepSeek" };
+  const LABELS = { claude: "Claude Code", codex: "Codex", pi: "Pi", dsh: "DeepSeek", hermes: "Hermes" };
   pop.innerHTML = `
     <div class="pkhead">选择 <b>${esc(LABELS[agent] || agent)}</b> 使用的模型</div>
     <div class="pksearch">

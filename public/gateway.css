@@ -226,6 +226,14 @@ html.gw-open #navfab, html.gw-open #handle, html.gw-open #outline { display: non
   flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap; font-family: var(--mono); font-size: 11.5px;
 }
+/* 「现有模型不在清单里」的提示放在按钮内做小徽标。
+   放在状态行里会多折两行：360px 下这句 15 个字要占满一行，
+   而且它说的是**右上角那个按钮**的事，离得越远越像在说状态。 */
+.gwagent .gwpick.warn { border-color: #7a5f2a; }
+.gwagent .gwpick .pkbadge {
+  flex-shrink: 0; font-size: 10px; line-height: 1; padding: 3px 5px;
+  border-radius: 4px; color: #e0b356; background: #3a2f18; border: 1px solid #6a5322;
+}
 .gwagent .gwpick .caret { color: #7b828c; font-size: 10px; flex-shrink: 0; }
 
 .gwagent .acts { display: flex; gap: 7px; align-items: center; flex-shrink: 0; }
