@@ -18,3 +18,11 @@ __pycache__/
 
 # 本机运行时数据（不应入库）
 .playwright-mcp/
+
+# 密钥与本地配置：网关密钥单独存 ~/.config/opensession/gateway-keys.json（600），
+# 正常不会落到仓库里；下面几条是**兜底**，防手滑 copy/导出 js 到工作区后被一起提交。
+gateway-keys.json
+gateway.json
+*.env
+.env*
+.workbuddy/
