@@ -166,14 +166,10 @@ function gwProviderRow(p) {
   if (p.anthropic) bases.push(`<span>anthropic <code>${esc(p.anthropic)}</code></span>`);
   if (p.responses) bases.push(`<span>responses <code>${esc(p.responses)}</code></span>`);
 
-  const keys = p.keys.length
-    ? `<div class="gwkeys">${p.keys.map((k, i) => `
-        <div class="gwkey">
-          <span class="kn">${k.name ? esc(k.name) : "#" + (i + 1)}</span>
-          <code>${esc(k.mask)}</code>
-          <button onclick="gwRemoveKey('${escAttr(p.id)}',${i})" title="删除这把密钥">✕</button>
-        </div>`).join("")}</div>`
-    : "";
+  // 🔴 列表里**不再铺出每把密钥的掩码**（BOSS 要求：那一块太吵，只是噪音）。
+  // 密钥的具体管理挪进「编辑」表单，那里才需要逐把删除；
+  // 这里只留一个把数，够判断有没有配、能不能故障转移。
+  const keyLine = p.keys.length ? `<span>密钥 ${p.keys.length} 把</span>` : "";
 
   const bal = p.balance
     ? `<span class="pill ${/^-|负/.test(p.balance) ? "bad" : "ok"}">余额 ${esc(p.balance)}</span>`
@@ -194,9 +190,9 @@ function gwProviderRow(p) {
     </div>
     <div class="meta">${bases.join("") || "<span>（无基址）</span>"}
       ${p.models.length ? `<span>模型 ${p.models.length} 个</span>` : "<span>未填模型</span>"}
+      ${keyLine}
       ${p.note ? `<span>${esc(p.note)}</span>` : ""}
     </div>
-    ${keys}
   </div>`;
 }
 
@@ -242,6 +238,12 @@ function gwProviderForm() {
         <label>密钥 <span class="opt">（${isEdit ? "留空表示不改动" : "可逗号分隔多个，按顺序故障转移"}）</span></label>
         <textarea id="gwkeys" placeholder="sk-..."></textarea>
         <div class="hint">多个 key 用换行或逗号分隔，可写成 <code>名字:sk-xxx</code> 便于区分。密钥单独存 <code>gateway-keys.json</code>（600 权限），不写进主配置。</div>
+        ${isEdit && v.keys && v.keys.length ? `<div class="gwkeys">${v.keys.map((k, i) => `
+          <div class="gwkey">
+            <span class="kn">${k.name ? esc(k.name) : "#" + (i + 1)}</span>
+            <code>${esc(k.mask)}</code>
+            <button onclick="gwRemoveKey('${escAttr(p.id)}',${i})" title="删除这把密钥">✕</button>
+          </div>`).join("")}</div>` : ""}
       </div>
       <div class="gwfield">
         <label>备注</label>
