@@ -302,26 +302,98 @@ function gwRenderGroups() {
 }
 
 // ---- Agent 指向页 ----
+//
+// 模型是**按工具分开**的，不是全局一个输入框。
+// 理由：四家 CLI 认的模型名不是同一套 —— claude 走 Anthropic 协议、
+// codex 只认 Responses、pi 的清单是网关注入的、dsh 连 -m 都没有。
+// 共用一个值的结果是「改成 A 家模型，B 家一启动就报模型不存在」。
 async function gwRenderAgents() {
   const el = $("#gwp-agents");
+  // 🔴 重绘前把各行的**未提交输入**存下来。
+  // 不存的话：用户填好三行，只点其中一个「指向网关」，渲染回来另外两行
+  // 就被「已保存的模型」覆盖成空 —— 白填。这是实测出来的问题。
+  const typed = {};
+  document.querySelectorAll(".gwm").forEach((i) => {
+    if (i.dataset.agent) typed[i.dataset.agent] = i.value;
+  });
   el.innerHTML = `<div class="gwcard"><div class="gwempty">读取中…</div></div>`;
   let a;
   try { a = await gwFetch("/api/gw/agents"); }
   catch (e) { el.innerHTML = `<div class="gwcard"><div class="gwempty">读取失败：${esc(e.message)}</div></div>`; return; }
 
-  const modelOpts = gw.data.models.map((m) => `<option value="${escAttr(m)}">`).join("");
+  const models = gw.data.models || [];
+  const saved = a.agentModels || {};
+
+  // 每行的候选清单单独一份 <datalist>：id 必须唯一，
+  // 复用同一个 id 在部分浏览器里只有第一个 input 能弹出建议。
+  const datalist = (key) =>
+    `<datalist id="gwm-${key}">` +
+      models.map((m) => `<option value="${escAttr(m)}">`).join("") +
+    `</datalist>`;
+
+  // 回填优先级：本地记下的模型 > 配置文件里当前生效的模型。
+  // 前者是「你上次为这个工具选的」，后者是「它现在实际在跑的」。
+  //
+  // 🔴 但**当前生效的模型不一定在网关清单里**（claude 的 `sonnet`、
+  // codex 走中转站时的 `gpt-6.2-sol` 都是这种情况）。预填这种值等于挖坑：
+  // 用户不改直接点「指向网关」→ 校验不通过 → 报「模型不在清单里」，
+  // 而界面上明明写着这个值。所以只在清单内才预填，清单外留空并给一句提示。
+  const inCatalog = (m) => models.includes(m);
+  const pick = (key, curModel) => {
+    // 用户刚打过字但还没提交的，优先保留（否则重绘就把草稿冲掉了）
+    if (typed[key] !== undefined && typed[key] !== "") return typed[key];
+    if (saved[key]) return saved[key];
+    return inCatalog(curModel) ? curModel : "";
+  };
+
+  const curText = (cur) => {
+    // 用数组 join 而不是模板串拼：codex 没有 baseUrl 时会留下
+    // 「当前： · 模型 xxx」这样的空档
+    const parts = [];
+    if (cur.viaGateway) parts.push('<span class="pill ok">走 OpenSession</span>');
+    if (cur.baseUrl) parts.push(`base <code>${esc(cur.baseUrl)}</code>`);
+    // Claude 的实际生效值是 env 里那四档 ANTHROPIC_DEFAULT_*_MODEL，
+    // 顶层的 `model` 字段不一定是它。只显示顶层会把「已改成功」和
+    // 「没改成」看成同一个样子，用户没法确认。
+    const envModels = cur.models ? Object.values(cur.models).filter(Boolean) : [];
+    const uniq = [...new Set(envModels)];
+    if (uniq.length === 1) {
+      parts.push(`模型 <code>${esc(uniq[0])}</code>`);
+    } else if (uniq.length > 1) {
+      const detail = Object.entries(cur.models)
+        .filter(([, v]) => v)
+        .map(([k, v]) => `${k}=<code>${esc(v)}</code>`)
+        .join(" ");
+      parts.push(`模型 ${detail}`);
+    } else if (cur.model) {
+      parts.push(`模型 <code>${esc(cur.model)}</code>`);
+    }
+    if (cur.modelProvider) parts.push(`provider <code>${esc(cur.modelProvider)}</code>`);
+    if (cur.provider) parts.push(`provider <code>${esc(cur.provider)}</code>`);
+    if (!cur.found) {
+      return `<span class="muted">未找到配置 <code>${esc(cur.configFile || "")}</code></span>`;
+    }
+    return parts.length ? "当前：" + parts.join(" · ") : "当前：<span class=\"muted\">未配置</span>";
+  };
+
   const row = (key, label, cur, supported, extra) => {
-    const on = cur.viaGateway;
+    // 回填用「实际生效的模型」：Claude 取 env 四档里那个（顶层 model 不作数）
+    const envVals = cur.models ? [...new Set(Object.values(cur.models).filter(Boolean))] : [];
+    const effective = envVals.length === 1 ? envVals[0] : (cur.model || "");
+    const val = pick(key, effective);
+    const offCatalog = supported && effective && !inCatalog(effective) && !saved[key];
     return `<div class="gwagent">
       <span class="an">${label}</span>
-      <span class="acur">${cur.found
-        ? `当前：${on ? '<span class="pill ok">走 OpenSession</span>' : ""}
-           ${cur.baseUrl ? `base <code>${esc(cur.baseUrl)}</code>` : ""}
-           ${cur.model ? ` · 模型 <code>${esc(cur.model)}</code>` : ""}
-           ${cur.modelProvider ? ` · provider <code>${esc(cur.modelProvider)}</code>` : ""}
-           ${cur.provider ? ` · provider <code>${esc(cur.provider)}</code>` : ""}`
-        : `<span class="muted">未找到配置 <code>${esc(cur.configFile || "")}</code></span>`}
-        ${extra || ""}</span>
+      <span class="acur">${curText(cur)}${extra || ""}
+        ${offCatalog ? `<br><span class="offcat">现有模型不在网关清单里，需从下拉里另选一个</span>` : ""}</span>
+      <span class="apick">
+        ${supported
+          ? `<input class="gwm" id="gwm-in-${key}" data-agent="${key}" list="gwm-${key}"
+               value="${escAttr(val)}" placeholder="provider/model 或 group/名字"
+               spellcheck="false" aria-label="${label} 使用的模型">
+             ${datalist(key)}`
+          : ""}
+      </span>
       <span class="acts">
         ${supported
           ? `<button onclick="gwApplyAgent('${key}',this)">指向网关</button>
@@ -333,12 +405,9 @@ async function gwRenderAgents() {
 
   el.innerHTML = `
     <div class="gwcard">
-      <h3>Agent 指向 <span class="sub">把 CLI 的 base_url 改到本网关</span></h3>
-      <div class="gwfield" style="margin-bottom:12px">
-        <label>指向时使用的模型 <span class="opt">（写进 agent 配置的默认模型）</span></label>
-        <input id="gwagentmodel" list="gwmodellist" placeholder="provider/model 或 group/名字" spellcheck="false">
-        <datalist id="gwmodellist">${modelOpts}</datalist>
-      </div>
+      <h3>Agent 指向 <span class="sub">把 CLI 的 base_url 改到本网关，模型逐个工具各自设置</span></h3>
+      <div class="gwhint">每个工具用自己的模型：Claude 走 Anthropic 协议，Codex 只认 Responses，
+        Pi 的清单由网关注入 —— 同一个模型名并非处处可用，所以不共用一份配置。</div>
       ${row("claude", "Claude", a.claude, true)}
       ${row("codex", "Codex", a.codex, true, a.codex.hasBlock ? ' <span class="pill">已注入 opensession 段</span>' : "")}
       ${row("pi", "Pi", a.pi, true)}
@@ -347,6 +416,8 @@ async function gwRenderAgents() {
         <b>改动前一律强制备份</b>到 <code>${esc("~/.config/opensession/agent-backups/")}</code>，
         只改自己写的那几个键，其余（modelPicker / statusLine / 其他 provider / 所有注释与段顺序）原样保留。
         「还原」回到你点「指向」之前的原值，不是回到厂商默认 —— 你不知道用户原来是不是走中转站。
+        <br><b>每个工具的模型单独记</b>（存在 <code>gateway.json</code> 的 <code>agentModels</code> 里），
+        改 Claude 的模型不会动到 Codex。
         <br><b>dsh 不给开关</b>：它的供应商在 <code>profiles/*/cordis.patch.yml</code> 的四层 YAML 里，
         零依赖下写它要自带一个保留缩进的 YAML 编辑器，代价不成比例。只显示当前指向。
       </div>
@@ -648,16 +719,25 @@ async function gwDelGroup(name) {
 }
 
 async function gwApplyAgent(agent, btn) {
-  const model = ($("#gwagentmodel").value || "").trim();
-  if (!model) return toast("先填「指向时使用的模型」");
-  if (!confirm(`把 ${agent} 指向本网关（模型 ${model}）？\n\n会先备份原配置到 ~/.config/opensession/agent-backups/。\n改完需要重启该 agent 才生效。`)) return;
+  // 只读这个工具自己那一行的输入框，不再有全局共用值
+  const box = document.getElementById("gwm-in-" + agent);
+  const model = ((box && box.value) || "").trim();
+  if (!model) return toast("先填 " + agent + " 要用的模型");
+  // 同一个模型写到别家可能不被接受（协议族不同），点名前先提醒一句
+  const others = [...document.querySelectorAll(".gwm")]
+    .filter((x) => x.dataset.agent !== agent && x.value.trim() === model)
+    .map((x) => x.dataset.agent);
+  const warn = others.length
+    ? `\n\n注意：${others.join(" / ")} 也在用同一个模型名，若那家不支持会说模型不存在。`
+    : "";
+  if (!confirm(`把 ${agent} 指向本网关（模型 ${model}）？${warn}\n\n会先备份原配置到 ~/.config/opensession/agent-backups/。\n改完需要重启该 agent 才生效。`)) return;
   btn.disabled = true;
   try {
     const r = await gwFetch("/api/gw/agents", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "apply", agent, model }),
     });
-    toast(`${agent} 已指向网关，备份：${String(r.backup || "").split("/").pop()}`);
+    toast(`${agent} 已指向网关（${model}），备份：${String(r.backup || "").split("/").pop()}`);
     await gwRenderAgents();
     await gwRefreshModelCatalog();
   } catch (e) { toast("失败：" + e.message); }

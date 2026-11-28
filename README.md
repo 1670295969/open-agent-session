@@ -1126,6 +1126,22 @@ OpenSession **不探测余额**，所以这两种**降级为 order / usage 并�
 还原策略比 magpie 保守：**回到「点『指向』之前那一刻」，不是回到厂商默认**——
 否则用户原来的中转站配置会丢。
 
+**模型是按工具分开的，不存在「全局一个模型」**。`gateway.json` 里存
+`agentModels: { claude, codex, pi }`，`applyTo(agent, model)` 写完配置后顺手记下
+这一家用的模型；`detectAll()` 把它带回前端，每行各自回填。
+
+- **为什么不能共用一个**：四家 CLI 认的模型名不是同一套 —— claude 走 Anthropic 协议、
+  codex 只认 Responses、pi 的清单是网关注入的、dsh 连 `-m` 都没有。
+  共用一个值 = 「改成 A 家的模型，B 家一启动就报模型不存在」。
+  后端原本就是按工具传参的，问题只在前端只有一个输入框。
+- **回填要取「实际生效值」**：claude 真正生效的是 `env` 里四档
+  `ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL` / `ANTHROPIC_SMALL_FAST_MODEL`，
+  不是配置顶层的 `model`。只显示顶层 → 用户改完无法确认是否生效。
+- **清单外的值不能预填**：现有模型可能是别家中转站的（`sonnet`、`gpt-6.2-sol` 都属于这种），
+  预填进去用户不改直接点「指向网关」就撞校验。现在清单外留空 + 一句提示。
+- **重绘要保住草稿**：`gwRenderAgents()` 每次重绘前先收集各输入框的值。
+  不收集的话，用户填好三行只点其中一个，另外两行会被「已保存值」覆盖成空。
+
 **🔴 备份查找必须用精确前缀**：`listBackups("pi")` 若用 `startsWith("pi-")`，
 会把 `pi-settings-*.json` 也算成 pi 的备份，倒序后 settings 成了「最新」，
 还原时拿 settings 的内容去覆盖 `models.json` → **providers 键整个消失**。

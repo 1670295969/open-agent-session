@@ -167,11 +167,32 @@ html.gw-open #navfab, html.gw-open #handle, html.gw-open #outline { display: non
   margin-bottom: 9px; flex-wrap: wrap;
 }
 .gwagent .an { font-size: 14px; color: #fff; width: 76px; flex-shrink: 0; }
-.gwagent .acur { flex: 1 1 240px; font-size: 12px; color: var(--dim); min-width: 0; }
+.gwagent .acur { flex: 1 1 200px; font-size: 12px; color: var(--dim); min-width: 0; }
 .gwagent .acur code { font-family: var(--mono); font-size: 11.5px; overflow-wrap: anywhere; color: #b8c4d0; }
+/* 现有模型不在网关清单里时的提示：轻量但可辨，不要用告警黄抢注意力 */
+.gwagent .acur .offcat { color: #8a929c; font-style: italic; }
+
+/* 每个工具自己的模型输入框。
+   宽度 235px 是测出来的：placeholder「provider/model 或 group/名字」在 210px 时
+   被截成「group/名」，用户看不到还有 group/ 这种写法。235px 刚好放全。 */
+.gwagent .apick { flex: 0 1 235px; min-width: 150px; }
+.gwagent .apick input {
+  width: 100%; box-sizing: border-box; font-family: var(--mono); font-size: 11.5px;
+  padding: 5px 8px; border-radius: 7px; border: 1px solid var(--line-soft);
+  background: var(--sunk); color: #d3d8e0;
+}
+.gwagent .apick input:focus { outline: none; border-color: #4a7fb5; }
+.gwagent .apick input::placeholder { color: #6f757c; }
+
 .gwagent .acts { display: flex; gap: 7px; flex-wrap: wrap; }
 .gwagent button { font-size: 12.5px; padding: 5px 11px; }
 .gwagent .ro { font-size: 11.5px; color: #6f757c; }
+
+/* 页面级一句说明：为什么模型不共用 */
+.gwhint {
+  font-size: 12px; color: var(--dim); line-height: 1.6; margin: -2px 0 14px;
+  padding-left: 2px;
+}
 
 /* ---- 备份 / 提示 ---- */
 .gwnote {
@@ -213,5 +234,8 @@ html.gw-open #navfab, html.gw-open #handle, html.gw-open #outline { display: non
   .gwprov .top { padding: 10px 11px; gap: 8px; }
   .gwagent { padding: 10px 11px; gap: 9px; }
   .gwagent .an { width: 100%; }
+  /* 手机档：输入框独占一行（和 .an 同样的处理），否则会被压到 60px 出头，
+     模型名 `moapi/deepseek-v4-pro` 只看得见 `moapi/d…` */
+  .gwagent .apick { flex: 1 1 100%; min-width: 0; }
   .gwep .r .k { width: 74px; font-size: 11px; }
 }
