@@ -16,7 +16,23 @@ function gwOpen() {
 
 function gwClose() {
   document.documentElement.classList.remove("gw-open");
+  if (typeof gwClosePicker === "function") gwClosePicker();
 }
+
+// 模型面板的关外与 Esc。挂在 document 上而不是面板节点：
+// 面板每次点开都是新节点，绑在节点上会随 remove() 一起丢掉。
+document.addEventListener("click", (e) => {
+  const pop = document.getElementById("gwpicker");
+  if (!pop) return;
+  if (pop.contains(e.target)) return;
+  // 点到那个「展开按钮」本身时别关 —— 它自己的 click 会负责开关，
+  // 这里再关一次会导致「点开立刻又关掉」
+  if (e.target.closest && e.target.closest(".gwpick")) return;
+  gwClosePicker();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") gwClosePicker();
+});
 
 function gwTab(t) {
   gw.tab = t;
@@ -303,14 +319,28 @@ function gwRenderGroups() {
 
 // ---- Agent 指向页 ----
 //
-// 模型是**按工具分开**的，不是全局一个输入框。
-// 理由：四家 CLI 认的模型名不是同一套 —— claude 走 Anthropic 协议、
-// codex 只认 Responses、pi 的清单是网关注入的、dsh 连 -m 都没有。
-// 共用一个值的结果是「改成 A 家模型，B 家一启动就报模型不存在」。
+// 界面结构参照 magpie 的 Agents 页：
+//
+//   [图标] 名称                              Tiers ›  [模型 ▾]   (开关)
+//          状态行（连没连、走哪个地址）
+//
+// 三条是从 magpie 学来的、实测确实更好的做法：
+//
+//   1. **开关不带文字**。magpie 就是一个裸滑块，开与关靠位置和颜色区分。
+//      之前我写「已开启 / 已关闭」两个字，两行并排看着像标签而不像控件，
+//      而且要占 50px 宽 —— 那一段正是窄屏最先挤爆的地方。
+//   2. **模型字段是按钮，点开一个可搜索面板**，不是 <input> + <datalist>。
+//      datalist 在 Chrome 里既不能按供应商分组、也不会显示「这家还剩几个模型」，
+//      30 多个模型平铺下来只能靠记住名字去猜。面板按供应商分组，可搜索。
+//   3. **状态行说事实**，不写「走 OpenSession」这种结论。之前那句话误导过：
+//      判定只看 provider 名，base_url 写成 /v1（实际 404）也打勾。
+//
+// 模型仍然是**按工具分开**的：claude 走 Anthropic 协议、codex 只认 Responses、
+// pi 的清单是网关注入的、dsh 连 -m 都没有。共用一个值 = 改成 A 家模型 B 家报错。
 async function gwRenderAgents() {
   const el = $("#gwp-agents");
   // 🔴 重绘前把各行的**未提交输入**存下来。
-  // 不存的话：用户填好三行，只点其中一个「指向网关」，渲染回来另外两行
+  // 不存的话：用户填好三行，只点其中一个开关，渲染回来另外两行
   // 就被「已保存的模型」覆盖成空 —— 白填。这是实测出来的问题。
   const typed = {};
   document.querySelectorAll(".gwm").forEach((i) => {
@@ -324,105 +354,242 @@ async function gwRenderAgents() {
   const models = gw.data.models || [];
   const saved = a.agentModels || {};
 
-  // 每行的候选清单单独一份 <datalist>：id 必须唯一，
-  // 复用同一个 id 在部分浏览器里只有第一个 input 能弹出建议。
-  const datalist = (key) =>
-    `<datalist id="gwm-${key}">` +
-      models.map((m) => `<option value="${escAttr(m)}">`).join("") +
-    `</datalist>`;
-
-  // 回填优先级：本地记下的模型 > 配置文件里当前生效的模型。
-  // 前者是「你上次为这个工具选的」，后者是「它现在实际在跑的」。
+  // 回填优先级：草稿 > 本地记下的 > 配置文件里当前生效的 > 空
   //
-  // 🔴 但**当前生效的模型不一定在网关清单里**（claude 的 `sonnet`、
-  // codex 走中转站时的 `gpt-6.2-sol` 都是这种情况）。预填这种值等于挖坑：
-  // 用户不改直接点「指向网关」→ 校验不通过 → 报「模型不在清单里」，
-  // 而界面上明明写着这个值。所以只在清单内才预填，清单外留空并给一句提示。
+  // 🔴 当前生效的模型**不一定在网关清单里**（claude 的 `sonnet`、
+  // codex 走中转站时的 `gpt-6.2-sol` 都是）。预填这种值等于挖坑：
+  // 用户不改直接开开关 → 校验不通过 → 报「模型不在清单里」。
   const inCatalog = (m) => models.includes(m);
   const pick = (key, curModel) => {
-    // 用户刚打过字但还没提交的，优先保留（否则重绘就把草稿冲掉了）
     if (typed[key] !== undefined && typed[key] !== "") return typed[key];
     if (saved[key]) return saved[key];
     return inCatalog(curModel) ? curModel : "";
   };
 
-  const curText = (cur) => {
-    // 用数组 join 而不是模板串拼：codex 没有 baseUrl 时会留下
-    // 「当前： · 模型 xxx」这样的空档
-    const parts = [];
-    if (cur.viaGateway) parts.push('<span class="pill ok">走 OpenSession</span>');
-    if (cur.baseUrl) parts.push(`base <code>${esc(cur.baseUrl)}</code>`);
-    // Claude 的实际生效值是 env 里那四档 ANTHROPIC_DEFAULT_*_MODEL，
-    // 顶层的 `model` 字段不一定是它。只显示顶层会把「已改成功」和
-    // 「没改成」看成同一个样子，用户没法确认。
-    const envModels = cur.models ? Object.values(cur.models).filter(Boolean) : [];
-    const uniq = [...new Set(envModels)];
-    if (uniq.length === 1) {
-      parts.push(`模型 <code>${esc(uniq[0])}</code>`);
-    } else if (uniq.length > 1) {
-      const detail = Object.entries(cur.models)
-        .filter(([, v]) => v)
-        .map(([k, v]) => `${k}=<code>${esc(v)}</code>`)
-        .join(" ");
-      parts.push(`模型 ${detail}`);
-    } else if (cur.model) {
-      parts.push(`模型 <code>${esc(cur.model)}</code>`);
-    }
-    if (cur.modelProvider) parts.push(`provider <code>${esc(cur.modelProvider)}</code>`);
-    if (cur.provider) parts.push(`provider <code>${esc(cur.provider)}</code>`);
+  // 状态行：只摆事实（地址、模型、provider），不下结论
+  const statusOf = (cur) => {
     if (!cur.found) {
-      return `<span class="muted">未找到配置 <code>${esc(cur.configFile || "")}</code></span>`;
+      return `<span class="st-off">未找到配置</span>
+        <span class="st-dim">${esc(shortPath(cur.configFile))}</span>`;
     }
-    return parts.length ? "当前：" + parts.join(" · ") : "当前：<span class=\"muted\">未配置</span>";
+    const bits = [];
+    if (cur.baseUrl) bits.push(`<code>${esc(cur.baseUrl)}</code>`);
+    // Claude 的实际生效值是 env 四档，顶层 model 不作数
+    const envVals = cur.models ? Object.values(cur.models).filter(Boolean) : [];
+    const uniq = [...new Set(envVals)];
+    if (uniq.length === 1) bits.push(`<code>${esc(uniq[0])}</code>`);
+    else if (uniq.length > 1) {
+      bits.push(esc(Object.entries(cur.models).filter(([, v]) => v)
+        .map(([k, v]) => `${k}=${v}`).join(" ")));
+    } else if (cur.model) bits.push(`<code>${esc(cur.model)}</code>`);
+    if (cur.brokenBase) {
+      return `<span class="st-warn">地址少了 /gw，请求会 404 —— 关掉再开即可修正</span>
+        ${bits.length ? `<span class="st-dim">${bits.join(" · ")}</span>` : ""}`;
+    }
+    if (cur.viaGateway) {
+      return `<span class="st-on">已接入</span> ${bits.join(" · ")}`;
+    }
+    // 没接入：说清楚它现在走的是哪儿，而不是只说「未接入」
+    if (cur.provider) bits.unshift(`provider <code>${esc(cur.provider)}</code>`);
+    if (cur.modelProvider) bits.unshift(`provider <code>${esc(cur.modelProvider)}</code>`);
+    return `<span class="st-off">未接入</span>
+      ${bits.length ? `<span class="st-dim">${bits.join(" · ")}</span>` : ""}`;
   };
 
+  // 图标用**首字母**而不是 emoji：本机字体缺 🅰 之类的字形，实测渲染成空心方框。
+  // 首字母在任何字体下都在，而且四个字母 C/C/P/D 区分度足够。
+  const ICONS = { claude: "C", codex: "X", pi: "P", dsh: "D" };
+
   const row = (key, label, cur, supported, extra) => {
-    // 回填用「实际生效的模型」：Claude 取 env 四档里那个（顶层 model 不作数）
     const envVals = cur.models ? [...new Set(Object.values(cur.models).filter(Boolean))] : [];
     const effective = envVals.length === 1 ? envVals[0] : (cur.model || "");
     const val = pick(key, effective);
     const offCatalog = supported && effective && !inCatalog(effective) && !saved[key];
-    return `<div class="gwagent">
-      <span class="an">${label}</span>
-      <span class="acur">${curText(cur)}${extra || ""}
-        ${offCatalog ? `<br><span class="offcat">现有模型不在网关清单里，需从下拉里另选一个</span>` : ""}</span>
+    const on = supported && cur.viaGateway;
+    const showVal = val || (effective && !inCatalog(effective) ? effective : "");
+    return `<div class="gwagent${on ? " on" : ""}">
+      <span class="ico">${ICONS[key] || "•"}</span>
+      <span class="amain">
+        <span class="an">${label}</span>
+        <span class="ast">${statusOf(cur)}${extra || ""}
+          ${offCatalog ? `<span class="st-hint">现有模型不在网关清单里，另选一个</span>` : ""}</span>
+      </span>
       <span class="apick">
         ${supported
-          ? `<input class="gwm" id="gwm-in-${key}" data-agent="${key}" list="gwm-${key}"
-               value="${escAttr(val)}" placeholder="provider/model 或 group/名字"
-               spellcheck="false" aria-label="${label} 使用的模型">
-             ${datalist(key)}`
+          ? `<button type="button" class="gwpick${showVal && inCatalog(showVal) ? "" : " empty"}"
+               onclick="gwPickModel(event,'${key}')"
+               aria-haspopup="listbox" aria-expanded="false"
+               title="${showVal ? escAttr(showVal) : "选择一个模型"}">
+               <span class="pv">${showVal ? esc(showVal) : "选择模型…"}</span>
+               <span class="caret">▾</span>
+             </button>
+             <input class="gwm" id="gwm-in-${key}" data-agent="${key}" type="hidden"
+               value="${escAttr(val)}">`
           : ""}
       </span>
       <span class="acts">
         ${supported
-          ? `<button onclick="gwApplyAgent('${key}',this)">指向网关</button>
-             <button onclick="gwRestoreAgent('${key}',this)">还原</button>`
-          : `<span class="ro">只读 · ${esc(cur.note || "不支持写入")}</span>`}
+          ? `<button class="gwtoggle${on ? " on" : ""}" role="switch" aria-checked="${on ? "true" : "false"}"
+               aria-label="${label} ${on ? "已接入网关，点击关闭" : "未接入网关，点击开启"}"
+               onclick="gwToggleAgent('${key}',this)" title="${on ? "关闭：配置回到开启之前" : "开启：把该工具指到本网关"}">
+               <span class="knob"></span>
+             </button>`
+            + (on ? `<button class="gwundo" onclick="gwRestoreAgent('${key}',this)"
+               title="退回上一次改动之前的备份（与开关的「回到开启之前」不同）">还原</button>` : "")
+          : `<span class="ro">只读</span>`}
       </span>
     </div>`;
   };
 
   el.innerHTML = `
     <div class="gwcard">
-      <h3>Agent 指向 <span class="sub">把 CLI 的 base_url 改到本网关，模型逐个工具各自设置</span></h3>
-      <div class="gwhint">每个工具用自己的模型：Claude 走 Anthropic 协议，Codex 只认 Responses，
-        Pi 的清单由网关注入 —— 同一个模型名并非处处可用，所以不共用一份配置。</div>
-      ${row("claude", "Claude", a.claude, true)}
-      ${row("codex", "Codex", a.codex, true, a.codex.hasBlock ? ' <span class="pill">已注入 opensession 段</span>' : "")}
-      ${row("pi", "Pi", a.pi, true)}
-      ${row("dsh", "DeepSeek", a.dsh, false)}
-      <div class="gwnote warn">
-        <b>改动前一律强制备份</b>到 <code>${esc("~/.config/opensession/agent-backups/")}</code>，
-        只改自己写的那几个键，其余（modelPicker / statusLine / 其他 provider / 所有注释与段顺序）原样保留。
-        「还原」回到你点「指向」之前的原值，不是回到厂商默认 —— 你不知道用户原来是不是走中转站。
-        <br><b>每个工具的模型单独记</b>（存在 <code>gateway.json</code> 的 <code>agentModels</code> 里），
-        改 Claude 的模型不会动到 Codex。
-        <br><b>dsh 不给开关</b>：它的供应商在 <code>profiles/*/cordis.patch.yml</code> 的四层 YAML 里，
-        零依赖下写它要自带一个保留缩进的 YAML 编辑器，代价不成比例。只显示当前指向。
+      <div class="gwhint">开关打开后，该 CLI 的请求改走本网关；开关上方的模型字段决定它用哪个模型。
+        每个工具各配各的 —— Claude 走 Anthropic 协议，Codex 只认 Responses，
+        同一个模型名并非处处可用。</div>
+      <div class="gwlist">
+        ${row("claude", "Claude Code", a.claude, true)}
+        ${row("codex", "Codex", a.codex, true)}
+        ${row("pi", "Pi", a.pi, true)}
+        ${row("dsh", "DeepSeek", a.dsh, false)}
+      </div>
+      <div class="gwnote">
+        <b>开关关闭时配置回到「开启之前那一刻」</b>，不是回到厂商默认 —— 你原来配的中转站不会丢。
+        开启期间改过模型的，用「还原」退回上一次改动前。
+        改动前一律强制备份到 <code>~/.config/opensession/agent-backups/</code>，
+        只改自己写的那几个键，其余（modelPicker / statusLine / 其他 provider / 注释与段顺序）原样保留。
+        <br><b>地址带 <code>/gw</code></b>：网关入口是 <code>/gw/v1/*</code>，根下的 <code>/v1/*</code> 不接请求。
+        <br><b>dsh 没有开关</b>：供应商在四层嵌套 YAML 里，零依赖写它代价不成比例，只显示当前指向。
       </div>
     </div>
   `;
+}
+
+// 长的配置路径只留末尾两段 —— 整条路径在窄屏上会把状态行挤成三行
+function shortPath(p) {
+  if (!p) return "";
+  const parts = String(p).split("/").filter(Boolean);
+  return parts.length <= 2 ? String(p) : "…/" + parts.slice(-2).join("/");
+}
+
+// ---- 模型选择面板（参照 magpie 的 picker）----
+//
+// 为什么不用 <input list=...> 的 datalist：
+//   · Chrome 里不能分组，30+ 个模型平铺，找一家得从头滚
+//   · 不能搜索（只有前缀补全，且输入框里会留下你打的字）
+//   · 不显示「这家有几个模型」，也不显示模型来自哪家
+// magpie 的做法是点开一个按供应商分组、顶部带搜索框的浮层，这里照做。
+function gwClosePicker() {
+  const old = document.getElementById("gwpicker");
+  if (old) old.remove();
+  document.querySelectorAll(".gwpick[aria-expanded=true]")
+    .forEach((b) => b.setAttribute("aria-expanded", "false"));
+}
+
+function gwPickModel(ev, agent) {
+  if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+  const btn = ev && ev.currentTarget;
+  const wasOpen = document.getElementById("gwpicker");
+  gwClosePicker();
+  if (wasOpen && btn && wasOpen.dataset.agent === agent) return;
+
+  const box = document.getElementById("gwm-in-" + agent);
+  const curVal = box ? box.value : "";
+  const models = gw.data.models || [];
+
+  // 按前缀分组：`moapi/GLM-5.2` → 组 moapi，条目 GLM-5.2
+  // 路由组（group/xxx）单独排在最前，因为它是「一条规则」而不是「一家的模型」
+  const byProv = new Map();
+  for (const m of models) {
+    const i = m.indexOf("/");
+    const p = i < 0 ? "" : m.slice(0, i);
+    if (!byProv.has(p)) byProv.set(p, []);
+    byProv.get(p).push(m);
+  }
+  const order = [...byProv.keys()].sort((x, y) =>
+    (x === "group" ? -1 : y === "group" ? 1 : x.localeCompare(y)));
+  const groups = order.map((p) => ({ prov: p, items: byProv.get(p) }));
+
+  // 条目里只在「模型名 ≠ 组名」时补后缀。
+  // 路由组是 group/xxx，条目已经叫 xxx 了，再挂一个 `group` 纯属噪声；
+  // 供应商组则是 moapi/GLM-5.2 这种，后面标 moapi 能帮人确认是哪家。
+  const itemHtml = (m) => {
+    const i = m.indexOf("/");
+    const prov = i < 0 ? "" : m.slice(0, i);
+    const name = i < 0 ? m : m.slice(i + 1);
+    const showProv = prov && prov !== "group" && prov !== name;
+    return `<button type="button" class="pkitem${m === curVal ? " sel" : ""}"
+      data-m="${escAttr(m)}" onclick="gwChooseModel('${agent}','${escAttr(m)}')">
+      <span class="pn">${esc(name)}</span>
+      ${showProv ? `<span class="pp">${esc(prov)}</span>` : '<span class="pp"></span>'}
+      ${m === curVal ? '<span class="tick">✓</span>' : ""}
+    </button>`;
+  };
+
+  const list = groups.map((g) => `
+    <div class="pkgrp" data-prov="${escAttr(g.prov)}">
+      <div class="pkgt">${esc(g.prov === "group" ? "路由组" : g.prov)}
+        <span class="cnt">${g.items.length}</span></div>
+      ${g.items.map(itemHtml).join("")}
+    </div>`).join("");
+
+  const pop = document.createElement("div");
+  pop.id = "gwpicker";
+  pop.dataset.agent = agent;
+  pop.className = "gwpicker";
+  // 面板要有标题：手机档面板会盖住整片列表，不写「给谁选」的话
+  // 用户只看得见一列模型名，不知道自己在改哪一行的配置。
+  const LABELS = { claude: "Claude Code", codex: "Codex", pi: "Pi", dsh: "DeepSeek" };
+  pop.innerHTML = `
+    <div class="pkhead">选择 <b>${esc(LABELS[agent] || agent)}</b> 使用的模型</div>
+    <div class="pksearch">
+      <input type="text" id="gwpk-q" placeholder="搜索模型，或直接输入名字" spellcheck="false"
+        autocomplete="off">
+    </div>
+    <div class="pklist" id="gwpk-list">${list || '<div class="gwempty">网关里还没有模型</div>'}</div>`;
+  document.body.appendChild(pop);
+
+  if (btn) {
+    btn.setAttribute("aria-expanded", "true");
+    // 贴着按钮下方展开、右对齐；越界就夹进视口（手机档按钮靠右，右对齐会探出去）
+    const r = btn.getBoundingClientRect();
+    const w = pop.getBoundingClientRect().width;
+    const pad = 8;
+    let left = Math.min(Math.max(pad, r.right - w), window.innerWidth - pad - w);
+    let top = r.bottom + 6;
+    // 下方放不下就翻到上方
+    const h = pop.getBoundingClientRect().height;
+    if (top + h > window.innerHeight - pad && r.top - h - 6 > pad) top = r.top - h - 6;
+    pop.style.left = Math.max(pad, left) + "px";
+    pop.style.top = top + "px";
+  }
+
+  const q = document.getElementById("gwpk-q");
+  if (q) {
+    q.addEventListener("input", () => {
+      const k = q.value.trim().toLowerCase();
+      document.querySelectorAll("#gwpk-list .pkitem").forEach((it) => {
+        it.style.display = !k || it.dataset.m.toLowerCase().includes(k) ? "" : "none";
+      });
+      // 组内一条都不剩就把组标题也藏掉，否则会留一堆空标题
+      document.querySelectorAll("#gwpk-list .pkgrp").forEach((g) => {
+        const any = [...g.querySelectorAll(".pkitem")].some((i) => i.style.display !== "none");
+        g.style.display = any ? "" : "none";
+      });
+    });
+    setTimeout(() => q.focus(), 0);
+  }
+}
+
+// 选定：写回隐藏输入 + 更新按钮文字。不立即写配置 ——
+// 用户可能只是在挑，拨开关那一刻才真正落盘（与 magpie 一致）。
+function gwChooseModel(agent, m) {
+  const box = document.getElementById("gwm-in-" + agent);
+  if (box) box.value = m;
+  const btn = document.querySelector(`.gwpick[aria-expanded="true"]`)
+    || document.querySelector(`.gwagent .gwpick[onclick*="'${agent}'"]`);
+  gwClosePicker();
+  // 重绘这一页：状态行要跟着改（模型变了，「不在清单里」的提示也该消失）
+  gwRenderAgents();
 }
 
 // ---- 用量页 ----
@@ -718,26 +885,42 @@ async function gwDelGroup(name) {
   } catch (e) { toast("失败：" + e.message); }
 }
 
-async function gwApplyAgent(agent, btn) {
-  // 只读这个工具自己那一行的输入框，不再有全局共用值
+// 开关：一个按钮两态，不再并排「指向网关 / 还原」两个动词。
+// 开着时点它 = 关闭（回到开启之前），关着时点它 = 开启。
+//
+// 这里保留「还原」的独立入口（长按 / 右键不动，指到说明里）——
+// 关闭用定版快照，还原用时间戳备份，语义不同：
+//   关闭 = 回到你**推开这扇门之前**的样子
+//   还原 = 回到**上一次改动之前**（含开启后改模型那一次）
+async function gwToggleAgent(agent, btn) {
+  const cur = btn.getAttribute("aria-checked") === "true";
   const box = document.getElementById("gwm-in-" + agent);
   const model = ((box && box.value) || "").trim();
-  if (!model) return toast("先填 " + agent + " 要用的模型");
-  // 同一个模型写到别家可能不被接受（协议族不同），点名前先提醒一句
-  const others = [...document.querySelectorAll(".gwm")]
-    .filter((x) => x.dataset.agent !== agent && x.value.trim() === model)
-    .map((x) => x.dataset.agent);
-  const warn = others.length
-    ? `\n\n注意：${others.join(" / ")} 也在用同一个模型名，若那家不支持会说模型不存在。`
-    : "";
-  if (!confirm(`把 ${agent} 指向本网关（模型 ${model}）？${warn}\n\n会先备份原配置到 ~/.config/opensession/agent-backups/。\n改完需要重启该 agent 才生效。`)) return;
+  if (cur) {
+    if (!confirm(`关闭 ${agent} 的网关接入？\n\n配置会回到你开启之前的样子（不是回到厂商默认）。`)) return;
+  } else {
+    if (!model) return toast("先填 " + agent + " 要用的模型");
+    const others = [...document.querySelectorAll(".gwm")]
+      .filter((x) => x.dataset.agent !== agent && x.value.trim() === model)
+      .map((x) => x.dataset.agent);
+    const warn = others.length
+      ? `\n\n注意：${others.join(" / ")} 也在用同一个模型名，若那家不支持会说模型不存在。`
+      : "";
+    if (!confirm(`开启 ${agent} 的网关接入（模型 ${model}）？${warn}\n\n会先备份原配置，改完需要重启该 agent 才生效。`)) return;
+  }
   btn.disabled = true;
   try {
     const r = await gwFetch("/api/gw/agents", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "apply", agent, model }),
+      body: JSON.stringify(cur ? { action: "off", agent } : { action: "apply", agent, model }),
     });
-    toast(`${agent} 已指向网关（${model}），备份：${String(r.backup || "").split("/").pop()}`);
+    if (cur) {
+      const n = (r.restored || []).length;
+      const sk = (r.skipped || [])[0];
+      toast(n ? `${agent} 已关闭，配置回到开启之前` : `关闭未完成：${sk ? sk.reason : "没有可用的快照"}`);
+    } else {
+      toast(`${agent} 已接入网关（${model}）`);
+    }
     await gwRenderAgents();
     await gwRefreshModelCatalog();
   } catch (e) { toast("失败：" + e.message); }

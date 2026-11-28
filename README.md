@@ -1116,15 +1116,39 @@ OpenSession **不探测余额**，所以这两种**降级为 order / usage 并�
 
 改任何 agent 配置前**强制备份**到 `~/.config/opensession/agent-backups/`。
 
-| Agent | 改动方式 | 说明 |
-|---|---|---|
-| claude | 逐键改 `settings.json` | `ANTHROPIC_BASE_URL=http://127.0.0.1:8347`，**不带 `/v1`**（SDK 自己拼） |
-| codex | **TOML 外科手术** | 不引 TOML 解析器（零依赖），只替换顶层 `model` / `model_provider` 两个赋值 + 重写自己的 `[model_providers.opensession]` 段，保住 129 个 `[projects.*]` 段与注释 |
-| pi | 改 `models.json` + settings | 注入 `opensession` 供应商（含 6 个模型），不动原有的 magpie |
-| dsh | **只读展示，不写** | 供应商在 `profiles/*/cordis.patch.yml` 的四层嵌套 YAML 里，零依赖下写它得自带保留缩进的 YAML 编辑器，代价不成比例 |
+界面上每行一个开关（裸滑块，照 magpie 的 Agents 页）：开着时该 CLI 的请求走本网关，
+旁边那个按钮选它用哪个模型。四行之间用分隔线而不是各自一张卡片 ——
+它们本来就是同一张映射表的四行。
 
-还原策略比 magpie 保守：**回到「点『指向』之前那一刻」，不是回到厂商默认**——
-否则用户原来的中转站配置会丢。
+| Agent | 改动方式 | 基址 | 说明 |
+|---|---|---|---|
+| claude | 逐键改 `settings.json` | `http://127.0.0.1:8347/gw` | **不带 `/v1`**（Anthropic SDK 自己拼 `/v1/messages`） |
+| codex | **TOML 外科手术** | `http://127.0.0.1:8347/gw/v1` | 不引 TOML 解析器（零依赖），只替换顶层 `model` / `model_provider` 两个赋值 + 重写自己的 `[model_providers.opensession]` 段，保住 129 个 `[projects.*]` 段与注释 |
+| pi | 改 `models.json` + settings | `http://127.0.0.1:8347/gw/v1` | 注入 `opensession` 供应商，不动原有的 magpie |
+| dsh | **只读展示，不写** | — | 供应商在 `profiles/*/cordis.patch.yml` 的四层嵌套 YAML 里，零依赖下写它得自带保留缩进的 YAML 编辑器，代价不成比例 |
+
+**🔴 基址必须带 `/gw`**。网关的转发路由是 `/gw/v1/{chat/completions,responses,messages}`
+（见上面的端点表），根下的 `/v1/*` 什么都不接 —— 【实测】`POST /v1/messages` 返回 404，
+`POST /gw/v1/messages` 返回 400（说明路由命中、只是请求体不合法）。
+早先版本写的是 `:8347` 和 `:8347/v1`，两家表面上「已指向网关」，
+实际每条请求都 404 —— 比不知道更糟，因为界面还打着勾。
+
+所以 `viaGateway` 的判定**不能只看 provider 名或端口**：`isOurBase()` 要求
+主机是本机、且路径正好是 `/gw` 或 `/gw/v1`。端口对而路径不对的旧配置单独识别为
+`brokenBase`，界面给一句「关掉再开即可修正」，而不是含糊的「未接入」。
+
+**「关闭」和「还原」是两件事**：
+
+| 动作 | 回到 | 实现 |
+|---|---|---|
+| 开关关闭 | **你推开这扇门之前**那一刻 | 定版快照 `<agent>.orig.<ext>`，只在「关 → 开」瞬间写一次，关闭时读它回填并删除 |
+| 「还原」按钮 | **上一次改动之前**（含开启后改模型那一次） | 时间戳备份，`listBackups()` 取最新 |
+
+不能拿「最新备份」当关闭用：开关只要来回拨过一次，最新那份备份里装的就已经是网关配置，
+拿它还原等于没关 —— 这是实测踩到的。
+
+`listBackups()` 还要排除 `-original` / `-undo` 两类自己写的文件，
+它们同样以 `tag-` 开头，不排除会被 `sort().reverse()` 当成「最新备份」。
 
 **模型是按工具分开的，不存在「全局一个模型」**。`gateway.json` 里存
 `agentModels: { claude, codex, pi }`，`applyTo(agent, model)` 写完配置后顺手记下
@@ -1133,14 +1157,16 @@ OpenSession **不探测余额**，所以这两种**降级为 order / usage 并�
 - **为什么不能共用一个**：四家 CLI 认的模型名不是同一套 —— claude 走 Anthropic 协议、
   codex 只认 Responses、pi 的清单是网关注入的、dsh 连 `-m` 都没有。
   共用一个值 = 「改成 A 家的模型，B 家一启动就报模型不存在」。
-  后端原本就是按工具传参的，问题只在前端只有一个输入框。
+- **模型字段是按钮不是输入框**：点开一个按供应商分组、带搜索的浮层。
+  不用 `<input list=...>` 的 datalist —— Chrome 里不能分组、不能搜索、
+  30+ 个模型平铺下来只能靠记名字去猜。选定只写隐藏输入，拨开关那一刻才落盘。
 - **回填要取「实际生效值」**：claude 真正生效的是 `env` 里四档
   `ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL` / `ANTHROPIC_SMALL_FAST_MODEL`，
   不是配置顶层的 `model`。只显示顶层 → 用户改完无法确认是否生效。
 - **清单外的值不能预填**：现有模型可能是别家中转站的（`sonnet`、`gpt-6.2-sol` 都属于这种），
-  预填进去用户不改直接点「指向网关」就撞校验。现在清单外留空 + 一句提示。
-- **重绘要保住草稿**：`gwRenderAgents()` 每次重绘前先收集各输入框的值。
-  不收集的话，用户填好三行只点其中一个，另外两行会被「已保存值」覆盖成空。
+  预填进去用户不改直接拨开关就撞校验。现在清单外留空 + 一句提示。
+- **重绘要保住草稿**：`gwRenderAgents()` 每次重绘前先收集各行的值。
+  不收集的话，用户填好三行只动其中一个，另外两行会被「已保存值」覆盖成空。
 
 **🔴 备份查找必须用精确前缀**：`listBackups("pi")` 若用 `startsWith("pi-")`，
 会把 `pi-settings-*.json` 也算成 pi 的备份，倒序后 settings 成了「最新」，
@@ -1188,7 +1214,7 @@ OpenSession **不探测余额**，所以这两种**降级为 order / usage 并�
 | POST | `/api/gw/provider` | 新增 / 修改 / 删除供应商、改密钥、测连通（`action: add\|update\|remove\|removeKey\|setKeys\|test`） |
 | POST | `/api/gw/group` | 新增 / 修改 / 删除路由组 |
 | PUT | `/api/gw/settings` | 开关网关、默认供应商、重试次数、故障转移开关 |
-| GET / POST | `/api/gw/agents` | GET 探测三家 CLI 的现状；POST 带 `action: apply\|restore` 与 `agent` 写回或还原 |
+| GET / POST | `/api/gw/agents` | GET 探测三家 CLI 的现状（含 `viaGateway` / `brokenBase`）；POST 带 `action: apply\|off\|restore` 与 `agent`：`apply` 接入（顺带记模型、存定版快照）、`off` 回到开启之前、`restore` 退回上一次改动前 |
 | GET | `/api/gw/usage` | 用量明细（`?since=&limit=`，倒序）。**必须先判 DELETE**：GET 分支若不带方法校验，`DELETE` 会被它接走，返回 `{rows:[]}` 却一行没删 |
 | DELETE | `/api/gw/usage` | 清空用量记录（配置不受影响） |
 | POST | `/gw/v1/chat/completions`<br>`/gw/v1/responses`<br>`/gw/v1/messages` | 网关转发入口（未启用时 503） |
