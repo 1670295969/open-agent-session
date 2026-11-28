@@ -373,7 +373,7 @@ async function gwRenderAgents() {
         <span class="st-dim">${esc(shortPath(cur.configFile))}</span>`;
     }
     const bits = [];
-    if (cur.baseUrl) bits.push(`<code>${esc(cur.baseUrl)}</code>`);
+    if (cur.baseUrl) bits.push(`<code>${esc(shortBase(cur.baseUrl))}</code>`);
     // Claude 的实际生效值是 env 四档，顶层 model 不作数
     const envVals = cur.models ? Object.values(cur.models).filter(Boolean) : [];
     const uniq = [...new Set(envVals)];
@@ -469,6 +469,14 @@ function shortPath(p) {
   if (!p) return "";
   const parts = String(p).split("/").filter(Boolean);
   return parts.length <= 2 ? String(p) : "…/" + parts.slice(-2).join("/");
+}
+
+// 地址去掉 `http://` —— 网关只监听 127.0.0.1，协议对读者没有信息量，
+// 但占掉 7 个字符，360px 下正好把 `.../gw` 推到第二行去。
+// https 保留：那说明它指向的是外部服务，性质不同，不该被抹掉。
+function shortBase(u) {
+  const s = String(u || "");
+  return s.replace(/^http:\/\//i, "");
 }
 
 // ---- 模型选择面板（参照 magpie 的 picker）----

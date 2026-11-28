@@ -190,9 +190,12 @@ html.gw-open #navfab, html.gw-open #handle, html.gw-open #outline { display: non
 
 .gwagent .amain { flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .gwagent .an { font-size: 13.5px; color: #fff; font-weight: 600; }
+/* 状态行用普通文字流，不用 flex + wrap。
+   flex 下每个 <code> 和「·」都是独立 item，窄屏时各自成行：
+   360px 实测会出现地址折成两行、中间那个「·」独占一行。文字流只在空格处断。 */
 .gwagent .ast {
   font-size: 11.5px; color: var(--dim); line-height: 1.55;
-  display: flex; flex-wrap: wrap; gap: 0 6px; align-items: baseline;
+  display: block;
 }
 .gwagent .ast code {
   font-family: var(--mono); font-size: 11px; color: #9aa6b4;
